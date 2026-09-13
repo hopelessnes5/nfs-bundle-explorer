@@ -1,7 +1,5 @@
-iOrange NFS:HP Bundle Explorer
-<img width="991" height="725" alt="nfs-bundle-explorer" src="https://github.com/user-attachments/assets/e6284592-899f-4a50-bc32-05a4e495099f" />
 # nfs-bundle-explorer
-
+iOrange NFS:HP Bundle Explorer
 <img width="991" height="725" alt="nfs-bundle-explorer" src="https://github.com/user-attachments/assets/e6284592-899f-4a50-bc32-05a4e495099f" />
 
 NFS:HP Bundle Explorer v0.3 (Modernized Edition)
