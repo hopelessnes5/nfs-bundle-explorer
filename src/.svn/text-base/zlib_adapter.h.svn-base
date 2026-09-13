@@ -1,0 +1,34 @@
+#ifndef ZLIB_ADAPTER_H
+#define ZLIB_ADAPTER_H
+
+#include <vector>
+
+
+
+namespace zlib_adapter
+{
+
+class ZLibFile
+{
+public:
+	ZLibFile(FILE* in);
+
+	int		read(void* dst, int bytes);
+	int		seek(int pos);
+	int		seek_to_end(void);
+	int		tell(void);
+	bool	get_eof(void);
+	int		close(void);
+
+private:
+	struct	inflater_impl* m_impl;
+};
+
+
+int DecompressMemory(void* data_in, int size_in, std::vector<unsigned char>& data_out);
+int CompressMemory(void* data_in, int size_in, std::vector<unsigned char>& data_out);
+
+}
+
+
+#endif // ZLIB_ADAPTER_H

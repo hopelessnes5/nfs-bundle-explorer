@@ -1,0 +1,216 @@
+#include "NFSModel.h"
+#include <QFile>
+
+
+uint32 ChooseVertexSize(uint32 numVertexes, uint32 vbAlignedSize)
+{
+	uint32 vertexSize = 0,
+		   vbUnalignedSize = 0;
+
+	static const uint32 knownVertexSizes[] = {36, 48, 52, 56, 60, 64};
+
+	for (size_t i = 0; i < (sizeof(knownVertexSizes) / sizeof(knownVertexSizes[0])); ++i)
+	{
+		vertexSize = knownVertexSizes[i];
+
+		vbUnalignedSize = vertexSize * numVertexes;
+		if ((vbUnalignedSize & (k_MidAllocationAlign - 1)) != 0)
+			vbUnalignedSize += k_MidAllocationAlign - (vbUnalignedSize & (k_MidAllocationAlign - 1));
+		if (vbUnalignedSize == vbAlignedSize)
+			return vertexSize;
+	}
+
+	return 0;
+}
+
+template <typename T>
+inline void MakeNFSVertex(const T& source, NFSVertex& newVert)
+{
+	newVert.pos.x	= (static_cast<float>(source.x) / 32767.0f) * 8.0f;
+	newVert.pos.y	= (static_cast<float>(source.y) / 32767.0f) * 8.0f;
+	newVert.pos.z	= (static_cast<float>(source.z) / 32767.0f) * 8.0f;
+	newVert.normal	= source.normal;
+}
+template <>
+inline void MakeNFSVertex<mesh_vertex_48>(const mesh_vertex_48& source, NFSVertex& newVert)
+{
+	newVert.pos.x	= (static_cast<float>(source.x) / 32767.0f) * 8.0f;
+	newVert.pos.y	= (static_cast<float>(source.y) / 32767.0f) * 8.0f;
+	newVert.pos.z	= (static_cast<float>(source.z) / 32767.0f) * 8.0f;
+	newVert.normal	= source.normal;
+	newVert.uv.x	= static_cast<float>(source.u0);
+	newVert.uv.y	= static_cast<float>(source.v0);
+}
+template <>
+inline void MakeNFSVertex<mesh_vertex_60>(const mesh_vertex_60& source, NFSVertex& newVert)
+{
+	newVert.pos.x	= (static_cast<float>(source.x) / 32767.0f) * 8.0f;
+	newVert.pos.y	= (static_cast<float>(source.y) / 32767.0f) * 8.0f;
+	newVert.pos.z	= (static_cast<float>(source.z) / 32767.0f) * 8.0f;
+	newVert.normal	= source.normal;
+	newVert.uv.x	= static_cast<float>(source.u0);
+	newVert.uv.y	= static_cast<float>(source.v0);
+}
+
+
+
+CNFSModel::CNFSModel()
+{
+}
+
+CNFSModel::~CNFSModel()
+{
+}
+
+int CNFSModel::InitFromData(const Uint8Vector& headerData, const Uint8Vector& modelData)
+{
+	const S_NFSModelHeader* mdlHdr = reinterpret_cast<const S_NFSModelHeader*>(&headerData[0]);
+	const uint32* meshHeadersOffsets = reinterpret_cast<const uint32*>(&headerData[sizeof(S_NFSModelHeader)]);
+
+	m_Meshes.clear();
+	m_Meshes.reserve(mdlHdr->numMeshes);
+	for (uint32 i = 0; i < mdlHdr->numMeshes; ++i)
+	{
+		NFSMesh mesh;
+
+		const uint32 meshHeaderOffset = meshHeadersOffsets[i];
+		const S_NFSMeshHeader* meshHdr = reinterpret_cast<const S_NFSMeshHeader*>(&headerData[meshHeaderOffset]);
+		const uint32 meshNumIndexes = meshHdr->numIndexes;
+		const uint32 meshNumVertexes = meshHdr->numVertexes;
+
+		const uint16* indexBuffer = reinterpret_cast<const uint16*>(&modelData[meshHdr->beginMeshOffset]);
+		mesh.faces = this->TriStripToTriList(indexBuffer, meshNumIndexes);
+
+		uint32 vertexSize = ChooseVertexSize(meshNumVertexes, meshHdr->VBSize);
+		const uint8* vertexBuffer = &modelData[meshHdr->VBStartOffset];
+		mesh.vertexes = this->MakeVertexBuffer(vertexBuffer, meshNumVertexes, vertexSize);
+
+		mesh.vertSize = vertexSize;
+
+#if	0
+		if (!i)
+		{
+			QFile file("vbDump");
+			if (!file.open(QIODevice::WriteOnly))
+				return FALSE;
+			file.write(reinterpret_cast<const char*>(vertexBuffer), vertexSize * meshNumVertexes);
+			file.close();
+		}
+#endif
+
+		m_Meshes.push_back(mesh);
+	}
+
+	return TRUE;
+}
+
+int CNFSModel::SaveAsOBJ(const QString& fileName) const
+{
+	std::ostringstream	stringBuilder;
+	stringBuilder << "# Generated from Need For Speed: Hot Pursuit model file" << std::endl;
+	stringBuilder << "#     width NFS:HP Bundle Explorer made by iOrange, 2010" << std::endl << std::endl;
+
+	NFSMeshesVec::const_iterator meshIt = m_Meshes.begin();
+	int i = 0;
+	uint32 lastIdx = 0;
+	for (; meshIt != m_Meshes.end(); ++meshIt, ++i)
+	{
+		stringBuilder << "g Object_" << i/* << "  [vertexSize = " << meshIt->vertSize << "]"*/ << std::endl;
+
+		NFSVertexesVec::const_iterator vertIt = meshIt->vertexes.begin();
+		for (; vertIt != meshIt->vertexes.end(); ++vertIt)
+		{
+			stringBuilder << "v " << vertIt->pos.x << " " << vertIt->pos.y << " " << vertIt->pos.z << std::endl;
+		}
+		stringBuilder << "# " << meshIt->vertexes.size() << " vertexes" << std::endl << std::endl;
+
+		vertIt = meshIt->vertexes.begin();
+		for (; vertIt != meshIt->vertexes.end(); ++vertIt)
+		{
+			stringBuilder << "vt " << vertIt->uv.x << " " << vertIt->uv.y << std::endl;
+		}
+		stringBuilder << "# " << meshIt->vertexes.size() << " texcoords" << std::endl << std::endl;
+
+		vertIt = meshIt->vertexes.begin();
+		for (; vertIt != meshIt->vertexes.end(); ++vertIt)
+		{
+			stringBuilder << "vn " << vertIt->normal.x << " " << vertIt->normal.y << " " << vertIt->normal.z << std::endl;
+		}
+		stringBuilder << "# " << meshIt->vertexes.size() << " normals" << std::endl << std::endl;
+
+		NFSFacesVec::const_iterator faceIt = meshIt->faces.begin();
+		for (; faceIt != meshIt->faces.end(); ++faceIt)
+		{
+			const uint16 a = faceIt->a + lastIdx + 1;
+			const uint16 b = faceIt->b + lastIdx + 1;
+			const uint16 c = faceIt->c + lastIdx + 1;
+
+			stringBuilder << "f " << a << "/" << a << "/" << a <<
+							  " " << b << "/" << b << "/" << b <<
+							  " " << c << "/" << c << "/" << c <<  std::endl;
+		}
+		stringBuilder << "# " << meshIt->faces.size() << " faces" << std::endl << std::endl;
+
+		lastIdx += static_cast<uint32>(meshIt->vertexes.size());
+	}
+
+	QFile file(fileName);
+	if (!file.open(QIODevice::WriteOnly))
+		return FALSE;
+
+	file.write(stringBuilder.str().c_str(), stringBuilder.str().length());
+	file.close();
+
+	return TRUE;
+}
+
+
+NFSFacesVec CNFSModel::TriStripToTriList(const uint16* ib, uint32 numIndexes) const
+{
+	NFSFacesVec newIndexes;
+
+	for (uint32 i = 2; i < numIndexes; ++i)
+	{
+		const bool isEven = (i % 2 == 0);
+
+		NFSFace face;
+		face.a = ib[isEven ? i - 1 : i];
+		face.b = ib[isEven ? i : i - 1];
+		face.c = ib[i - 2];
+
+		//if not degenerate add to the list
+		if (face.a != face.b && face.b != face.c && face.c != face.a)
+			newIndexes.push_back(face);
+	}
+
+	return newIndexes;
+}
+
+NFSVertexesVec CNFSModel::MakeVertexBuffer(const uint8* vb, uint32 numVertexes, uint32 vertexSize) const
+{
+	NFSVertexesVec newVertexes;
+	newVertexes.reserve(numVertexes);
+
+	for (uint32 i = 0; i < numVertexes; ++i)
+	{
+		const mesh_vertex_48* vert48 = reinterpret_cast<const mesh_vertex_48 *>(vb + (i * vertexSize));
+		const mesh_vertex_60* vert60 = reinterpret_cast<const mesh_vertex_60 *>(vb + (i * vertexSize));
+
+		NFSVertex newVert;
+		if (60 == vertexSize)
+			MakeNFSVertex(*vert60, newVert);
+		else if (48 == vertexSize)
+			MakeNFSVertex(*vert48, newVert);
+		else
+		{
+			newVert.pos.x	= (static_cast<float>(vert48->x) / 32767.0f) * 8.0f;
+			newVert.pos.y	= (static_cast<float>(vert48->y) / 32767.0f) * 8.0f;
+			newVert.pos.z	= (static_cast<float>(vert48->z) / 32767.0f) * 8.0f;
+			newVert.normal	= vert48->normal;
+		}
+
+		newVertexes.push_back(newVert);
+	}
+
+	return newVertexes;
+}

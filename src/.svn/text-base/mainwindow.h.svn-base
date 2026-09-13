@@ -1,0 +1,60 @@
+#ifndef MAINWINDOW_H
+#define MAINWINDOW_H
+
+#include <QMainWindow>
+#include <QGraphicsScene>
+#include <QDragEnterEvent>
+
+#include "common.h"
+#include "NFSTexture.h"
+#include "NFSModel.h"
+#include "NFSBundle.h"
+
+namespace Ui {
+	class MainWindow;
+}
+
+class CNFSTexture;
+
+class MainWindow : public QMainWindow
+{
+	Q_OBJECT
+
+public:
+	explicit MainWindow(QWidget *parent = 0);
+	~MainWindow();
+
+	void			dragEnterEvent(QDragEnterEvent* event);
+	void			dropEvent(QDropEvent* event);
+
+	int				GetSelectedFileIndex(void);
+	CNFSTexture*	GetTextureFromFileIndex(int idx);
+	CNFSModel*		GetModelFromFileIndex(int idx);
+	int				SaveRAWFile(int idx, const QString& fileName);
+	void			OpenBundle(const QString& fileName);
+
+private:
+	Ui::MainWindow *ui;
+	CNFSBundle*						m_Bundle;
+	QGraphicsScene*					m_GraphScene;
+
+private slots:
+	void on_actionClose_file_triggered();
+	void on_actionBundle_assembler_triggered();
+	void on_actionDDS_NFS_triggered();
+	void on_actionAbout_triggered();
+	void on_actionShow_file_information_triggered();
+	void on_actionView_defs_table_triggered();
+	void on_actionSave_strings_triggered();
+	void on_actionRAW_data_extract_all_triggered();
+	void on_actionRAW_data_extract_selected_triggered();
+	void on_actionExtract_all_triggered();
+	void on_actionExtract_selected_triggered();
+	void on_action_Open_triggered();
+	void on_actionE_xit_triggered();
+	void onFileSelected(void);
+	void onListViewContextMenu(const QPoint& pos);
+	void on_actionWrite_bundle_table_triggered();
+};
+
+#endif // MAINWINDOW_H

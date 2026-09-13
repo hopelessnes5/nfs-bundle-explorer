@@ -1,0 +1,57 @@
+#include "dlgdefstableview.h"
+#include "ui_dlgdefstableview.h"
+
+#include "../zlib_adapter.h"
+
+DlgDefsTableView::DlgDefsTableView(QWidget *parent)
+	: QDialog(parent)
+	, ui(new Ui::DlgDefsTableView)
+{
+	ui->setupUi(this);
+
+	ui->tblTable->setColumnCount(3);
+	QStringList labels;
+	labels.append("Field ID");
+	labels.append("Offset");
+	labels.append("Type");
+	ui->tblTable->setHorizontalHeaderLabels(labels);
+}
+
+DlgDefsTableView::~DlgDefsTableView()
+{
+	delete ui;
+}
+
+void DlgDefsTableView::SetBundleAndIdx(CNFSBundle* bundle, int idx)
+{
+	m_Bundle = bundle;
+	m_Idx = idx;
+
+	const S_NFSFileInfo& info = bundle->GetFileInfo(idx);
+	uint8* compData = reinterpret_cast<uint8*>(bundle->GetDataAtOffset(info.fileHeaderOffset));
+
+	std::vector<uint8> headerData;
+	headerData.resize(info.hdrUncompSize, 0);
+	zlib_adapter::DecompressMemory(compData, info.hdrCompSize, headerData);
+
+	memcpy(&m_DefsTableHeader, &headerData[0], sizeof(S_NFSDefsTableHeader));
+	m_DefsTableEntries.resize(m_DefsTableHeader.defsCount);
+	memcpy(&m_DefsTableEntries[0], (&headerData[0]) + sizeof(S_NFSDefsTableHeader), sizeof(S_NFSDefsTableEntry) * m_DefsTableHeader.defsCount);
+
+	ui->lblDefTableName->setText(m_DefsTableHeader.defName);
+
+	for (uint32 i = 0; i < m_DefsTableHeader.defsCount; ++i)
+	{
+		const S_NFSDefsTableEntry& entry = m_DefsTableEntries[i];
+
+		ui->tblTable->insertRow(i);
+
+		QTableWidgetItem* item0 = new QTableWidgetItem(QString::number(entry.defID, 16));
+		QTableWidgetItem* item1 = new QTableWidgetItem(QString::number(entry.offset));
+		QTableWidgetItem* item2 = new QTableWidgetItem(QString::number(entry.type));
+
+		ui->tblTable->setItem(i, 0, item0);
+		ui->tblTable->setItem(i, 1, item1);
+		ui->tblTable->setItem(i, 2, item2);
+	}
+}

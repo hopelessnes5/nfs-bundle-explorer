@@ -1,0 +1,64 @@
+#include "NFSBundle.h"
+
+CNFSBundle::CNFSBundle()
+	: m_MappedFile(NULL)
+{
+}
+
+int CNFSBundle::InitFromFile(const QString& fileName)
+{
+	MY_SAFE_DELETE(m_MappedFile)
+
+	m_MappedFile = new QtMappedFile(fileName);
+	m_MappedFile->ReadData(&m_Header, sizeof(m_Header));
+
+	m_FilesTable.resize(m_Header.numFiles);
+	m_MappedFile->ReadData(&m_FilesTable[0], sizeof(S_NFSTableEntry) * m_Header.numFiles);
+	this->GatherFilesInfos();
+
+	return TRUE;
+}
+
+int CNFSBundle::GetFilesCount(void) const
+{
+	return static_cast<int>(m_FilesTable.size());
+}
+
+const S_NFSFileInfo& CNFSBundle::GetFileInfo(int idx) const
+{
+	return m_FilesInfos[idx];
+}
+
+const S_NFSTableEntry& CNFSBundle::GetFileEntry(int idx) const
+{
+	return m_FilesTable[idx];
+}
+
+const S_NFSBndlHeader& CNFSBundle::GetBundleHeader(void) const
+{
+	return m_Header;
+}
+
+void* CNFSBundle::GetDataAtOffset(size_t offset)
+{
+	return m_MappedFile->GetDataAtOffset(offset);
+}
+
+
+void CNFSBundle::GatherFilesInfos(void)
+{
+	m_FilesInfos.resize(m_FilesTable.size());
+
+	std::vector<S_NFSTableEntry>::const_iterator srcIt = m_FilesTable.begin();
+	std::vector<S_NFSFileInfo>::iterator dstIt = m_FilesInfos.begin();
+	for (; srcIt != m_FilesTable.end(); ++srcIt, ++dstIt)
+	{
+		dstIt->fileHeaderOffset = srcIt->hdrOffset + m_Header.headersOffset;
+		dstIt->fileBodyOffset = srcIt->bodyOffset + m_Header.bodysOffset;
+		dstIt->hdrUncompSize = srcIt->hdrUncompSize & k_EntryUncompSizeMask;
+		dstIt->dataUncompSize = srcIt->dataUncompSize & k_EntryUncompSizeMask;
+		dstIt->hdrCompSize = srcIt->hdrCompSize;
+		dstIt->dataCompSize = srcIt->dataCompSize;
+		dstIt->fileType = srcIt->fileType;
+	}
+}

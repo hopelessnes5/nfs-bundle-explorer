@@ -1,0 +1,167 @@
+K 25
+svn:wc:ra_dav:version-url
+V 21
+/svn/!svn/ver/5/trunk
+END
+NFSBundleExplorer.rc
+K 25
+svn:wc:ra_dav:version-url
+V 42
+/svn/!svn/ver/2/trunk/NFSBundleExplorer.rc
+END
+main.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 30
+/svn/!svn/ver/2/trunk/main.cpp
+END
+NFSBundle.h
+K 25
+svn:wc:ra_dav:version-url
+V 33
+/svn/!svn/ver/2/trunk/NFSBundle.h
+END
+NFSBundleExplorer.ico
+K 25
+svn:wc:ra_dav:version-url
+V 43
+/svn/!svn/ver/2/trunk/NFSBundleExplorer.ico
+END
+tovcproj.bat
+K 25
+svn:wc:ra_dav:version-url
+V 34
+/svn/!svn/ver/3/trunk/tovcproj.bat
+END
+common.h
+K 25
+svn:wc:ra_dav:version-url
+V 30
+/svn/!svn/ver/2/trunk/common.h
+END
+zlib_adapter.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 38
+/svn/!svn/ver/2/trunk/zlib_adapter.cpp
+END
+NFSMath.h
+K 25
+svn:wc:ra_dav:version-url
+V 31
+/svn/!svn/ver/2/trunk/NFSMath.h
+END
+zlib_adapter.h
+K 25
+svn:wc:ra_dav:version-url
+V 36
+/svn/!svn/ver/2/trunk/zlib_adapter.h
+END
+NFSTexture.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 36
+/svn/!svn/ver/3/trunk/NFSTexture.cpp
+END
+NFSModel.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 34
+/svn/!svn/ver/2/trunk/NFSModel.cpp
+END
+mainwindow.ui
+K 25
+svn:wc:ra_dav:version-url
+V 35
+/svn/!svn/ver/4/trunk/mainwindow.ui
+END
+NFSStringsTable.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 41
+/svn/!svn/ver/5/trunk/NFSStringsTable.cpp
+END
+DDS.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 29
+/svn/!svn/ver/2/trunk/DDS.cpp
+END
+QtMappedFile.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 38
+/svn/!svn/ver/2/trunk/QtMappedFile.cpp
+END
+NFSTexture.h
+K 25
+svn:wc:ra_dav:version-url
+V 34
+/svn/!svn/ver/2/trunk/NFSTexture.h
+END
+NFSModel.h
+K 25
+svn:wc:ra_dav:version-url
+V 32
+/svn/!svn/ver/2/trunk/NFSModel.h
+END
+mainwindow.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 36
+/svn/!svn/ver/5/trunk/mainwindow.cpp
+END
+NFSStringsTable.h
+K 25
+svn:wc:ra_dav:version-url
+V 39
+/svn/!svn/ver/5/trunk/NFSStringsTable.h
+END
+resources.qrc
+K 25
+svn:wc:ra_dav:version-url
+V 35
+/svn/!svn/ver/2/trunk/resources.qrc
+END
+NFSStructuresDef.h
+K 25
+svn:wc:ra_dav:version-url
+V 40
+/svn/!svn/ver/5/trunk/NFSStructuresDef.h
+END
+DDS.h
+K 25
+svn:wc:ra_dav:version-url
+V 27
+/svn/!svn/ver/2/trunk/DDS.h
+END
+NFSBundleExplorer.pro
+K 25
+svn:wc:ra_dav:version-url
+V 43
+/svn/!svn/ver/5/trunk/NFSBundleExplorer.pro
+END
+NFSTypes.h
+K 25
+svn:wc:ra_dav:version-url
+V 32
+/svn/!svn/ver/2/trunk/NFSTypes.h
+END
+QtMappedFile.h
+K 25
+svn:wc:ra_dav:version-url
+V 36
+/svn/!svn/ver/2/trunk/QtMappedFile.h
+END
+NFSBundle.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 35
+/svn/!svn/ver/2/trunk/NFSBundle.cpp
+END
+mainwindow.h
+K 25
+svn:wc:ra_dav:version-url
+V 34
+/svn/!svn/ver/5/trunk/mainwindow.h
+END

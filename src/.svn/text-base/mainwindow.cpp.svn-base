@@ -1,0 +1,546 @@
+#include "mainwindow.h"
+#include "ui_mainwindow.h"
+
+#include <QFileDialog>
+#include <QMessageBox>
+#include <QUrl>
+
+#include "dialogs/dlgfileinfo.h"
+#include "dialogs/DlgBundleAssembler.h"
+#include "dialogs/dlgdefstableview.h"
+
+#include "NFSStringsTable.h"
+
+#include "zlib_adapter.h"
+
+
+QString GetFileTypeString(uint32 fileType)
+{
+	if (NFS_FILE_TEXTURE == fileType)
+		return QString("texture");
+	if (NFS_FILE_MATERIAL == fileType)
+		return QString("material");
+	else if (NFS_FILE_MODEL == fileType)
+		return QString("model");
+	else if (NFS_FILE_DEFS_TABLE == fileType)
+		return QString("defs table");
+	else if (NFS_FILE_STRINGS_TABLE == fileType)
+		return QString("strings");
+	else
+		return QString("unknown");
+}
+
+
+
+
+MainWindow::MainWindow(QWidget *parent)
+	: QMainWindow(parent)
+	, ui(new Ui::MainWindow)
+	, m_Bundle(NULL)
+	, m_GraphScene(NULL)
+{
+	ui->setupUi(this);
+
+	ui->listWidget->setContextMenuPolicy(Qt::CustomContextMenu);
+	connect(ui->listWidget, SIGNAL(customContextMenuRequested(QPoint)), this, SLOT(onListViewContextMenu(QPoint)));
+	connect(ui->listWidget, SIGNAL(itemSelectionChanged()), this, SLOT(onFileSelected()));
+
+	setAcceptDrops(true);
+}
+
+MainWindow::~MainWindow()
+{
+	delete ui;
+
+	MY_SAFE_DELETE(m_Bundle)
+}
+
+
+
+void MainWindow::dragEnterEvent(QDragEnterEvent *event)
+{
+	if (event->mimeData()->hasUrls())
+	{
+		QString file_path = event->mimeData()->urls().first().toLocalFile();
+		if (file_path.length() > 3)
+			event->acceptProposedAction();
+	}
+}
+
+void MainWindow::dropEvent(QDropEvent* event)
+{
+	if (!event->mimeData()->hasUrls())
+	{
+		event->ignore();
+		return;
+	}
+
+	QString file_path = event->mimeData()->urls().first().toLocalFile();
+	this->OpenBundle(file_path);
+	event->acceptProposedAction();
+}
+
+
+int MainWindow::GetSelectedFileIndex(void)
+{
+	QList<QListWidgetItem *> selected = ui->listWidget->selectedItems();
+	if (selected.size() < 1)
+		return - 1;
+
+	QListWidgetItem* item = selected[0];
+	QVariant var = item->data(Qt::UserRole);
+
+	bool ok;
+	int dw = var.toInt(&ok);
+	if (!ok)
+		return - 1;
+
+	return dw;
+}
+
+CNFSTexture* MainWindow::GetTextureFromFileIndex(int idx)
+{
+	CNFSTexture* tex = NULL;
+
+	const S_NFSFileInfo& info = m_Bundle->GetFileInfo(idx);
+	if (info.fileType != NFS_FILE_TEXTURE)
+		return NULL;
+
+	uint8* compData = reinterpret_cast<uint8*>(m_Bundle->GetDataAtOffset(info.fileHeaderOffset));
+
+	std::vector<uint8> headerData;
+	headerData.resize(info.hdrUncompSize, 0);
+	if (zlib_adapter::DecompressMemory(compData, info.hdrCompSize, headerData))
+	{
+		compData = reinterpret_cast<uint8*>(m_Bundle->GetDataAtOffset(info.fileBodyOffset));
+		std::vector<uint8> imageData;
+		imageData.resize(info.dataUncompSize, 0);
+		if (zlib_adapter::DecompressMemory(compData, info.dataCompSize, imageData))
+		{
+			tex = new CNFSTexture();
+			tex->InitFromData(headerData, imageData);
+		}
+	}
+
+	return tex;
+}
+
+CNFSModel* MainWindow::GetModelFromFileIndex(int idx)
+{
+	CNFSModel* mdl = NULL;
+
+	const S_NFSFileInfo& info = m_Bundle->GetFileInfo(idx);
+	if (info.fileType != NFS_FILE_MODEL)
+		return NULL;
+
+	uint8* compData = reinterpret_cast<uint8*>(m_Bundle->GetDataAtOffset(info.fileHeaderOffset));
+	std::vector<uint8> headerData;
+	headerData.resize(info.hdrUncompSize, 0);
+	if (zlib_adapter::DecompressMemory(compData, info.hdrCompSize, headerData))
+	{
+		compData = reinterpret_cast<uint8*>(m_Bundle->GetDataAtOffset(info.fileBodyOffset));
+		std::vector<uint8> modelData;
+		modelData.resize(info.dataUncompSize, 0);
+		if (zlib_adapter::DecompressMemory(compData, info.dataCompSize, modelData))
+		{
+			mdl = new CNFSModel();
+			mdl->InitFromData(headerData, modelData);
+		}
+	}
+
+	return mdl;
+}
+
+int MainWindow::SaveRAWFile(int idx, const QString& fileName)
+{
+	const S_NFSFileInfo& info = m_Bundle->GetFileInfo(idx);
+	uint8* compData = reinterpret_cast<uint8*>(m_Bundle->GetDataAtOffset(info.fileHeaderOffset));
+
+	std::vector<uint8> headerData;
+	headerData.resize(info.hdrUncompSize, 0);
+	if (zlib_adapter::DecompressMemory(compData, info.hdrCompSize, headerData))
+	{
+		std::vector<uint8> fileData;
+		if (info.dataCompSize > 0)
+		{
+			compData = reinterpret_cast<uint8*>(m_Bundle->GetDataAtOffset(info.fileBodyOffset));
+			fileData.resize(info.dataUncompSize, 0);
+			if (!zlib_adapter::DecompressMemory(compData, info.dataCompSize, fileData))
+				return FALSE;
+		}
+
+		QFile file(fileName);
+		if (!file.open(QIODevice::WriteOnly))
+			return FALSE;
+		else
+		{
+			file.write(reinterpret_cast<const char*>(&headerData[0]), headerData.size());
+			if (!fileData.empty())
+				file.write(reinterpret_cast<const char*>(&fileData[0]), fileData.size());
+			file.flush();
+			file.close();
+		}
+	}
+	else
+		return false;
+
+	return true;
+}
+
+void MainWindow::OpenBundle(const QString& fileName)
+{
+	MY_SAFE_DELETE(m_Bundle)
+
+	m_Bundle = new CNFSBundle();
+	m_Bundle->InitFromFile(fileName);
+
+	ui->listWidget->clear();
+	for (int i = 0; i < m_Bundle->GetFilesCount(); ++i)
+	{
+		const S_NFSFileInfo& info = m_Bundle->GetFileInfo(i);
+
+		QListWidgetItem* item = new QListWidgetItem(tr("file_%1 (%2) [%3 KB]").arg(i, 4, 10, QChar('0')).arg(GetFileTypeString(info.fileType)).arg(float(info.hdrUncompSize + info.dataUncompSize) / 1024));
+
+		if (info.fileType == NFS_FILE_TEXTURE)
+			item->setIcon(QIcon(":/resources/icons/Picture_16x16.png"));
+		else if (info.fileType == NFS_FILE_MODEL)
+			item->setIcon(QIcon(":/resources/icons/Blue SRT-4.png"));
+		else
+			item->setIcon(QIcon(":/resources/icons/New_16x16.png"));
+
+		item->setData(Qt::UserRole, QVariant(i));
+		ui->listWidget->addItem(item);
+	}
+}
+
+
+
+void MainWindow::on_actionE_xit_triggered()
+{
+	this->close();
+}
+
+static void BGR2RGB(uint8* data, uint32 dataLen, uint32 bpp)
+{
+	dataLen /= bpp;
+	while (dataLen--)
+	{
+		std::swap(data[0], data[2]);
+		data += bpp;
+	}
+}
+
+void MainWindow::onFileSelected(void)
+{
+	MY_SAFE_DELETE(m_GraphScene)
+
+	int idx = this->GetSelectedFileIndex();
+	if (idx < 0)
+		return;
+
+	CNFSTexture* texture = this->GetTextureFromFileIndex(idx);
+	if (texture)
+	{
+		const int components = texture->GetNumComponents();
+		const int width = texture->GetWidth();
+		const int height = texture->GetHeight();
+
+		uint8* rgbImage = new uint8[width * height * components];
+		texture->Decompress(rgbImage);
+		//BGR2RGB(rgbImage, width * height * components, components);
+		delete texture;
+
+		m_GraphScene = new QGraphicsScene(NULL);
+		m_GraphScene->addPixmap(QPixmap::fromImage(QImage(rgbImage, width, height, components == 3 ? QImage::Format_RGB888 : QImage::Format_ARGB32)));
+
+		ui->graphicsView->resetCachedContent();
+		ui->graphicsView->setScene(m_GraphScene);
+		ui->graphicsView->show();
+
+		delete [] rgbImage;
+	}
+}
+
+void MainWindow::onListViewContextMenu(const QPoint& pos)
+{
+	int idx = this->GetSelectedFileIndex();
+	if (idx < 0)
+		return;
+
+	const S_NFSFileInfo& info = m_Bundle->GetFileInfo(idx);
+
+	QMenu* menu = new QMenu(ui->listWidget);
+	menu->addAction(QIcon(":/resources/icons/Save_24x24.png"), tr("Extract resource (%1) ...").arg(GetFileTypeString(info.fileType)), this, SLOT(on_actionExtract_selected_triggered()));
+	menu->addSeparator();
+	menu->addAction(QIcon(":/resources/icons/Information_48x48.png"), tr("Show file information..."), this, SLOT(on_actionShow_file_information_triggered()));
+	if (NFS_FILE_DEFS_TABLE == info.fileType)
+	{
+		menu->addSeparator();
+		menu->addAction(tr("View defs table..."), this, SLOT(on_actionView_defs_table_triggered()));
+	}
+	else if (NFS_FILE_STRINGS_TABLE == info.fileType)
+	{
+		menu->addSeparator();
+		menu->addAction(tr("Save strings..."), this, SLOT(on_actionSave_strings_triggered()));
+	}
+	menu->exec(ui->listWidget->mapToGlobal(pos));
+}
+
+void MainWindow::on_action_Open_triggered()
+{
+	QString name = QFileDialog::getOpenFileName(this, tr("Select NFS:HP bundle file"), QString(), tr("NFS:HP bundle (*.bndl *.bundle *.bin)"));
+	if (name.length() < 3)
+		return;
+
+	this->OpenBundle(name);
+}
+
+void MainWindow::on_actionClose_file_triggered()
+{
+	ui->listWidget->clear();
+	MY_SAFE_DELETE(m_Bundle)
+}
+
+void MainWindow::on_actionExtract_selected_triggered()
+{
+	int idx = this->GetSelectedFileIndex();
+	if (idx < 0)
+	{
+		QMessageBox::warning(this, tr("Warning"), tr("No files selected"), QMessageBox::Ok, QMessageBox::Ok);
+		return;
+	}
+
+	bool fail = true;
+
+	const S_NFSFileInfo& info = m_Bundle->GetFileInfo(idx);
+	if (info.fileType == NFS_FILE_TEXTURE)
+	{
+		QString name = QFileDialog::getSaveFileName(this, tr("Where to save NFS:HP texture?"), QString(), tr("DDS Images (*.dds)"));
+		if (name.length() < 3)
+			return;
+
+		CNFSTexture* texture = this->GetTextureFromFileIndex(idx);
+		if (!texture || !texture->SaveAsDDS(name))
+			QMessageBox::critical(this, tr("Error"), tr("Could not save texture!"), QMessageBox::Ok, QMessageBox::Ok);
+		else
+			fail = false;
+
+		MY_SAFE_DELETE(texture)
+	}
+	else if (info.fileType == NFS_FILE_MODEL)
+	{
+		QString name = QFileDialog::getSaveFileName(this, tr("Where to save NFS:HP model?"), QString(), tr("OBJ Model (*.obj)"));
+		if (name.length() < 3)
+			return;
+
+		CNFSModel* model = this->GetModelFromFileIndex(idx);
+		if (!model || !model->SaveAsOBJ(name))
+			QMessageBox::critical(this, tr("Error"), tr("Could not save model!"), QMessageBox::Ok, QMessageBox::Ok);
+		else
+			fail = false;
+
+		MY_SAFE_DELETE(model)
+	}
+	else // iOrange - save raw
+	{
+		QString name = QFileDialog::getSaveFileName(this, tr("Where to save RAW file?"), QString(), tr("RAW file (*.raw)"));
+		if (name.length() < 3)
+			return;
+
+		if (!this->SaveRAWFile(idx, name))
+			QMessageBox::critical(this, tr("Error"), tr("Could not save file!"), QMessageBox::Ok, QMessageBox::Ok);
+		else
+			fail = false;
+	}
+
+	if (!fail)
+		QMessageBox::information(this, tr("Success"), tr("File saved"), QMessageBox::Ok, QMessageBox::Ok);
+}
+
+void MainWindow::on_actionExtract_all_triggered()
+{
+	QString dir = QFileDialog::getExistingDirectory(this, tr("Where to save NFS:HP textures?"));
+	if (dir.length() < 3)
+		return;
+
+	if (dir[dir.length() - 1] != '\\' && dir[dir.length() - 1] != '/')
+		dir += '/';
+
+	bool someErrors = false;
+
+	for (int i = 0; i < m_Bundle->GetFilesCount(); ++i)
+	{
+		if (m_Bundle->GetFileInfo(i).fileType == NFS_FILE_TEXTURE)
+		{
+			CNFSTexture* texture = this->GetTextureFromFileIndex(i);
+			if (texture)
+			{
+				QString name = dir + QString("file_%1.dds").arg(i, 4, 10, QChar('0'));
+				if (!texture->SaveAsDDS(name))
+					someErrors = true;
+
+				delete texture;
+			}
+			else
+				someErrors = true;
+		}
+		else if (m_Bundle->GetFileInfo(i).fileType == NFS_FILE_MODEL)
+		{
+			CNFSModel* model = this->GetModelFromFileIndex(i);
+			if (model)
+			{
+				QString name = dir + QString("file_%1.obj").arg(i, 4, 10, QChar('0'));
+				if (!model->SaveAsOBJ(name))
+					someErrors = true;
+
+				delete model;
+			}
+			else
+				someErrors = true;
+		}
+		else
+		{
+			QString name = dir + QString("file_type_%1_%2.raw").arg(m_Bundle->GetFileInfo(i).fileType).arg(i, 4, 10, QChar('0'));
+			if (!this->SaveRAWFile(i, name))
+				someErrors = true;
+		}
+	}
+
+	if (someErrors)
+		QMessageBox::warning(this, tr("Error"), tr("Some files could not be saved"), QMessageBox::Ok, QMessageBox::Ok);
+	else
+		QMessageBox::information(this, tr("Success"), tr("Files saved"), QMessageBox::Ok, QMessageBox::Ok);
+}
+
+void MainWindow::on_actionRAW_data_extract_selected_triggered()
+{
+	int idx = this->GetSelectedFileIndex();
+	if (idx < 0)
+	{
+		QMessageBox::warning(this, tr("Warning"), tr("No files selected"), QMessageBox::Ok, QMessageBox::Ok);
+		return;
+	}
+
+	QString name = QFileDialog::getSaveFileName(this, tr("Where to save RAW file?"), QString(), tr("NFS RAW Files (*.nfs)"));
+	if (name.length() < 3)
+		return;
+
+	if (!this->SaveRAWFile(idx, name))
+		QMessageBox::critical(this, tr("Error"), tr("Could not save file!"), QMessageBox::Ok, QMessageBox::Ok);
+	else
+		QMessageBox::information(this, tr("Success"), tr("File saved"), QMessageBox::Ok, QMessageBox::Ok);
+}
+
+void MainWindow::on_actionRAW_data_extract_all_triggered()
+{
+	QString dir = QFileDialog::getExistingDirectory(this, tr("Where to save RAW files?"));
+	if (dir.length() < 3)
+		return;
+
+	if (dir[dir.length() - 1] != '\\' && dir[dir.length() - 1] != '/')
+		dir += '/';
+
+	bool someErrors = false;
+
+	for (int i = 0; i < m_Bundle->GetFilesCount(); ++i)
+	{
+		QString name = dir + QString("file_%1.nfs").arg(i, 4, 10, QChar('0'));
+		if (!this->SaveRAWFile(i, name))
+			someErrors = true;
+	}
+
+	if (someErrors)
+		QMessageBox::warning(this, tr("Error"), tr("Some files could not be saved"), QMessageBox::Ok, QMessageBox::Ok);
+	else
+		QMessageBox::information(this, tr("Success"), tr("Files saved"), QMessageBox::Ok, QMessageBox::Ok);
+}
+
+void MainWindow::on_actionShow_file_information_triggered()
+{
+	int idx = this->GetSelectedFileIndex();
+	if (idx >= 0)
+	{
+		DlgFileInfo dfi(this);
+		dfi.SetFileInfo(m_Bundle->GetFileInfo(idx), m_Bundle);
+		dfi.exec();
+	}
+}
+
+void MainWindow::on_actionView_defs_table_triggered()
+{
+	int idx = this->GetSelectedFileIndex();
+	if (idx >= 0)
+	{
+		DlgDefsTableView dlg(this);
+		dlg.SetBundleAndIdx(m_Bundle, idx);
+		dlg.exec();
+	}
+}
+
+void MainWindow::on_actionSave_strings_triggered()
+{
+	int idx = this->GetSelectedFileIndex();
+	if (idx >= 0)
+	{
+		QString name = QFileDialog::getSaveFileName(this, tr("Where to save TXT file?"), QString(), tr("TXT Files (*.txt)"));
+		if (name.length() < 3)
+			return;
+
+		const S_NFSFileInfo& info = m_Bundle->GetFileInfo(idx);
+		uint8* compData = reinterpret_cast<uint8*>(m_Bundle->GetDataAtOffset(info.fileHeaderOffset));
+
+		std::vector<uint8> headerData;
+		headerData.resize(info.hdrUncompSize, 0);
+		zlib_adapter::DecompressMemory(compData, info.hdrCompSize, headerData);
+
+		CNFSStringsTable strTable;
+		strTable.InitFromData(headerData);
+		strTable.SaveAsTXT(name);
+	}
+}
+
+void MainWindow::on_actionAbout_triggered()
+{
+	QMessageBox::information(this, tr("About..."), tr("Need For Speed: Hot Pursuit Bundle Explorer v0.2\nWritten by iOrange, 2010"), QMessageBox::Ok, QMessageBox::Ok);
+}
+
+void MainWindow::on_actionDDS_NFS_triggered()
+{
+	QString name = QFileDialog::getOpenFileName(this, tr("Select DDS texture"), QString(), tr("DDS Images (*.dds)"));
+	if (name.length() < 3)
+		return;
+
+	if (CNFSTexture::ConvertDDS2NFS(name))
+		QMessageBox::information(this, tr("Success"), ("Texture converted"), QMessageBox::Ok, QMessageBox::Ok);
+	else
+		QMessageBox::critical(this, tr("Error"), ("Texture not converted"), QMessageBox::Ok, QMessageBox::Ok);
+}
+
+void MainWindow::on_actionBundle_assembler_triggered()
+{
+	DlgBundleAssembler bundleAssembler(this);
+	bundleAssembler.exec();
+}
+
+void MainWindow::on_actionWrite_bundle_table_triggered()
+{
+	QString name = QFileDialog::getSaveFileName(this, tr("Where to save table info?"), QString(), tr("TXT Files (*.txt)"));
+	if (name.length() < 3)
+		return;
+
+	QFile file(name);
+	if (file.open(QIODevice::WriteOnly))
+	{
+		for (int i = 0; i < m_Bundle->GetFilesCount(); ++i)
+		{
+			const S_NFSTableEntry& fileEntry = m_Bundle->GetFileEntry(i);
+
+			QString line = QString("entry: hash = %1, linkID = %2, fileType = %3, numLinks = %4\n").arg(fileEntry.hash)//, 0, 16)
+																								   .arg(fileEntry.linkID)
+																								   .arg(fileEntry.fileType)
+																								   .arg(fileEntry.numLinks);
+			file.write(line.toAscii());
+		}
+		file.close();
+	}
+}

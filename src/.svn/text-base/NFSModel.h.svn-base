@@ -1,0 +1,50 @@
+#ifndef	__NFSModel_h__
+#define	__NFSModel_h__
+
+#include <QString>
+#include "common.h"
+
+struct NFSVertex
+{
+	vec3	pos;
+	vec3	normal;
+	vec2	uv;
+};
+struct NFSFace
+{
+	uint16	a, b, c;
+};
+
+typedef	std::vector<NFSVertex>	NFSVertexesVec;
+typedef	std::vector<NFSFace>	NFSFacesVec;
+
+struct NFSMesh
+{
+	NFSVertexesVec	vertexes;
+	NFSFacesVec		faces;
+	uint32			vertSize;
+};
+
+typedef	std::vector<NFSMesh>	NFSMeshesVec;
+
+
+
+
+class CNFSModel
+{
+public:
+	CNFSModel();
+	virtual ~CNFSModel();
+
+	int	InitFromData(const Uint8Vector& headerData, const Uint8Vector& modelData);
+	int	SaveAsOBJ(const QString& fileName) const;
+
+private:
+	NFSFacesVec		TriStripToTriList(const uint16* ib, uint32 numIndexes) const;
+	NFSVertexesVec	MakeVertexBuffer(const uint8* vb, uint32 numVertexes, uint32 vertexSize) const;
+
+private:
+	NFSMeshesVec		m_Meshes;
+};
+
+#endif	// __NFSModel_h__

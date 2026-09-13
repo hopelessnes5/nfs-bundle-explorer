@@ -1,0 +1,80 @@
+#ifndef	__common_h__
+#define	__common_h__
+
+#include <list>
+#include <vector>
+#include <map>
+#include <string>
+#include <algorithm>
+#include <utility>
+#include <limits>
+#include <cassert>
+#include <cstdio>
+#include <sstream>
+#include <memory.h>
+
+#include "NFSTypes.h"
+#include "NFSMath.h"
+#include "NFSStructuresDef.h"
+
+#ifndef	STATIC_ASSERT
+#	define	STATIC_ASSERT(condition,description) struct assert_failure_##description {char assert_failure[(condition)?1:-1];}
+#endif	// STATIC_ASSERT
+
+#ifndef	MY_SAFE_DELETE
+#	define	MY_SAFE_DELETE(ptr)	{if(ptr)delete ptr;ptr=0;}
+#endif	// MY_SAFE_DELETE
+#ifndef	MY_SAFE_DELETE_ARRAY
+#	define	MY_SAFE_DELETE_ARRAY(arr)	{if(ptr)delete [] ptr;ptr=0;}
+#endif	// MY_SAFE_DELETE
+
+
+
+STATIC_ASSERT(sizeof(uint64) == 8, uint64_sizeof);
+STATIC_ASSERT(sizeof(uint32) == 4, uint32_sizeof);
+STATIC_ASSERT(sizeof(uint16) == 2, uint16_sizeof);
+STATIC_ASSERT(sizeof( uint8) == 1, uint8_sizeof);
+
+typedef	std::vector<int>	IntVector;
+typedef	std::vector<uint32>	Uint32Vector;
+typedef	std::vector<short>	ShortVector;
+typedef	std::vector<uint16>	Uint16Vector;
+typedef	std::vector<char>	CharVector;
+typedef	std::vector<uint8>	Uint8Vector;
+typedef	std::vector<float>	FloatVector;
+
+typedef std::vector<std::string>	StringsVector;
+
+#ifndef	FALSE
+#	define	FALSE	0
+#endif	// FALSE
+
+#ifndef	TRUE
+#	define	TRUE	0
+#endif	// TRUE
+
+#ifndef	NULL
+#	define	NULL	0
+#endif	// NULL
+
+
+#ifndef	ZeroMemory
+#	define	ZeroMemory(ptr, size)	memset(ptr, 0, size)
+#endif	// ZeroMemory
+
+#ifndef	MAKEFOURCC
+#	define	MAKEFOURCC(ch0, ch1, ch2, ch3)	((uint32)(uint8)(ch0) | ((uint32)(uint8)(ch1) << 8) | ((uint32)(uint8)(ch2) << 16) | ((uint32)(uint8)(ch3) << 24 ))
+#endif	// MAKEFOURCC
+
+
+template <typename T>
+inline T GetAligned(const T& value, const T& align)
+{
+	if ((value & (align - 1)) != 0)
+		return value + (align - (value & (align - 1)));
+	else
+		return value;
+}
+
+
+#endif	// __common_h__

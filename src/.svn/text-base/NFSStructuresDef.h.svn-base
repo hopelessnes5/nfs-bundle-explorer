@@ -1,0 +1,223 @@
+/*
+ * This code is written by iOrange, 2010
+ *  please, remember me if you use this code ;)
+ */
+
+#ifndef	__NFSStructuresDef_h__
+#define	__NFSStructuresDef_h__
+
+#include "NFSTypes.h"
+#include "NFSMath.h"
+
+enum E_NFS_FILE_TYPE
+{
+	NFS_FILE_UNKNOWN_TYPE	=	0,
+	NFS_FILE_TEXTURE		=	1,		// texture
+	NFS_FILE_MATERIAL		=	2,		// material/shader definition
+	NFS_FILE_MODEL			=	5,		// model geometry
+	NFS_FILE_UNKNOWN7		=	7,		// ?
+	NFS_FILE_DEFS_TABLE		=	18,		// definitions table
+	NFS_FILE_UNKNOWN19		=	19,		// ?
+	NFS_FILE_UNKNOWN81		=	81,		// ? small file
+	NFS_FILE_UNKNOWN129		=	129,	// ? sound file or sound reference (SPS) ?
+	NFS_FILE_UNKNOWN176		=	176,	// ?
+	NFS_FILE_UNKNOWN178		=	178,	// ?
+	NFS_FILE_COLLISION		=	262,	// ? collision model?
+	NFS_FILE_STRINGS_TABLE	=	513,	// strings table / localization database
+	NFS_FILE_UNKNOWN527		=	527,	// ?
+	NFS_FILE_UNKNOWN532		=	532,	// ?
+	NFS_FILE_DEFORMATION	=	771,	// ? collision/deform model?
+
+	LAST_NFS_FILE_TYPE
+};
+
+static const uint32		k_RegularAllocationAlign	=	16;
+static const uint32		k_MidAllocationAlign		=	32;
+static const uint32		k_BigAllocationAlign		=	128;
+
+static const uint32		k_EntryUncompSizeMask		=	0x00ffffff;
+
+// iOrange - declaration of bundle header
+//			 structure size == 0x30 (48) bytes
+struct S_NFSBndlHeader
+{
+	uint32	magic;				// iOrange - "bnd2"
+	uint32	version;			// iOrange - 2 - Burnout Paradise, 3 - Hot Pursuit
+	uint32	u2;					// iOrange - always 1
+	uint32	bundleSize;			// iOrange - size of bundle
+	uint32	numFiles;			// iOrange - num of files
+	uint32	tableOffset;		// iOrange - files table
+	uint32	headersOffset;		// iOrange - begin of files headers
+	uint32	bodysOffset;		// iOrange - begin of files bodys
+	uint32	dataEnd;			// iOrange - could match bodysOffset if no bodys data stored
+	uint32	bundleSize2;		// iOrange - == bundleSize ???
+	uint32	bundleFlags;		// iOrange - 0x07, 0x27
+	uint32	zero;				// iOrange - 0x00000000 ;)
+};
+
+// iOrange - declaration of file entry in files table
+//			 structure size == 0x50 (80) bytes
+struct S_NFSTableEntry
+{
+	uint32	hash;				// iOrange - not yet sure
+	uint32	zero1;				// iOrange - 0x00000000
+	uint32	linkID;				// iOrange - seems to be files link (if any)
+	uint32	u1;					// iOrange - 0x01000053 ?
+	uint32	hdrUncompSize;		// iOrange - highest byte always 0x20, just mask it to 0x00
+	uint32	dataUncompSize;		// iOrange - highest byte always 0x40, just mask it to 0x00
+	uint32	zero2[2];			// iOrange - 0, 0
+	uint32	hdrCompSize;		// iOrange - size of compressed file header
+	uint32	dataCompSize;		// iOrange - size of compressed file body (or null if no body)
+	uint32	zero3[2];			// iOrange - 0, 0
+	uint32	hdrOffset;			// iOrange - relative to S_NFSBndlHeader::headersOffset
+	uint32	bodyOffset;			// iOrange - relative to S_NFSBndlHeader::bodysOffset
+	uint32	zero4[2];			// iOrange - 0, 0
+	uint32	dataEnd;			// iOrange - if non-packed, then == hdrOffset+hdrUncompSize ?
+	uint32	fileType;			// iOrange - seems to be file type (one of E_NFS_FILE_TYPE)
+	uint32	numLinks;			// iOrange - num of external references inside this file (tCrossReferenceEntry at the end of CPU segment)
+								//			 the highest byte could be non-zero for some reason. some sort of indication?
+	uint32	zero5;				// iOrange - 0x00000000
+};
+
+//
+// files could refer to each other. The following type of references are
+// listed in a bottom of CPU segment (if references are required)
+//
+struct S_NFSCrossFileLink
+{
+	uint32	linkID;				// iOrange - file linkID
+	uint32	zero1;				// iOrange - 0x00000000
+	uint32	targetVar;			// iOrange - offset to variable where according reference is required;
+	uint32	zero2;				// iOrange - 0x00000000
+};
+
+struct S_NFSDefsTableHeader
+{
+	enum { k_DefNameMaxLen = 51 };
+
+	uint32	stuff0;
+	uint32	stuff1;
+	uint32	stuff2;
+	uint32	defsCount;
+	uint8	zero0;
+	char	defName[k_DefNameMaxLen];
+};
+
+struct S_NFSDefsTableEntry
+{
+	uint32	defID;
+	uint32	type;
+	uint32	data2;
+	uint32	offset;
+	uint32	data4;
+};
+
+////////////////////////////////////////////////////////////
+//	Strings table formats
+////////////////////////////////////////////////////////////
+struct S_NFSStringsTableHeader
+{
+	uint32	version;
+	uint32	stringsCount;
+	uint32	charSize;
+	uint32	stringInfosOffset;	// at this offset (from begin of file) starts S_NFSStringsTableInfo[stringsCount]
+};
+
+struct S_NFSStringsTableInfo
+{
+	uint32	offset;
+	uint32	stringLength;		// including null character
+};
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+
+struct S_NFSTextureHeader
+{
+	uint32	stuff0;
+	uint32	stuff1;
+	uint32	stuff2;				// iOrange - always == 1
+	uint32	type;				// iOrange - type - DXT(1/5) or 0x15 (RGBA)
+	uint16	width;
+	uint16	height;
+	uint32	stuff3;				// iOrange - always == 1
+	uint8	unknown;			// iOrange - always == 1
+	uint8	numMipmaps;			// iOrange - number of mipmaps
+	uint16	stuff4;				// iOrange - always == 0x3000
+	uint32	stuff5;
+};
+
+struct S_NFSModelHeader
+{
+	uint32	stuff0[4];
+	uint16	unknown;
+	uint16	numMeshes;
+	uint32	stuff1[3];
+};
+// iOrange - after header - there are offsets(uint32) to their per-mesh headers of number model_header.numMeshes
+struct S_NFSMeshHeader
+{
+	uint32	stuff0[7];
+	uint32	numVertexes;
+	uint32	stuff1[12];
+	uint32	numIndexes;
+	uint32	beginMeshOffset;
+	uint32	stuff2[2];
+	uint32	VBStartOffset;
+	uint32	stuff3;
+	uint32	VBSize;
+	uint32	stuff4;
+};
+
+
+struct mesh_vertex_48
+{
+	int16	x;
+	int16	y;
+	int16	z;
+	int16	w;
+	vec3	normal;
+	vec3	tangent;
+	uint8	bones[4];
+	uint8	weights[4];
+	float16	u0;
+	float16	v0;
+	float16	u1;
+	float16	v1;
+};
+
+struct mesh_vertex_52
+{
+	int16	x;
+	int16	y;
+	int16	z;
+	int16	w;
+	vec3	normal;
+	vec3	tangent;
+	uint8	bones[4];
+	uint8	weights[4];
+	float16	u0;
+	float16	v0;
+	float16	u1;
+	float16	v1;
+	float16	u2;
+	float16	v2;
+};
+
+struct mesh_vertex_60
+{
+	int16	x;
+	int16	y;
+	int16	z;
+	int16	w;
+	vec3	normal;
+	vec3	tangent;
+	vec3	binormal;
+	uint8	bones[4];
+	uint8	weights[4];
+	float16	u0;
+	float16	v0;
+	float16	u1;
+	float16	v1;
+};
+
+#endif	// __NFSStructuresDef_h__

@@ -1,0 +1,42 @@
+#ifndef	__NFSBundle_h__
+#define	__NFSBundle_h__
+
+#include <QString>
+#include "QtMappedFile.h"
+#include "common.h"
+
+struct S_NFSFileInfo
+{
+	uint32	fileHeaderOffset;
+	uint32	fileBodyOffset;
+	uint32	hdrUncompSize;
+	uint32	dataUncompSize;
+	uint32	hdrCompSize;
+	uint32	dataCompSize;
+	uint32	fileType;
+};
+
+class CNFSBundle
+{
+public:
+	CNFSBundle();
+
+	int						InitFromFile(const QString& fileName);
+	int						GetFilesCount(void) const;
+	const S_NFSFileInfo&	GetFileInfo(int idx) const;
+	const S_NFSTableEntry&	GetFileEntry(int idx) const;
+	const S_NFSBndlHeader&	GetBundleHeader(void) const;
+
+	void*					GetDataAtOffset(size_t offset);
+
+private:
+	void	GatherFilesInfos(void);
+
+private:
+	S_NFSBndlHeader					m_Header;
+	std::vector<S_NFSTableEntry>	m_FilesTable;
+	std::vector<S_NFSFileInfo>		m_FilesInfos;
+	QtMappedFile*					m_MappedFile;
+};
+
+#endif	// __NFSBundle_h__

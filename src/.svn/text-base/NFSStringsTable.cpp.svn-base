@@ -1,0 +1,63 @@
+#include "NFSStringsTable.h"
+
+#include <QFile>
+#include <QTextStream>
+
+CNFSStringsTable::CNFSStringsTable()
+{
+}
+CNFSStringsTable::~CNFSStringsTable()
+{
+}
+
+
+bool CNFSStringsTable::InitFromData(const Uint8Vector& data)
+{
+	uint32 offset = 0;
+	memcpy(&m_Header, &data[offset], sizeof(S_NFSStringsTableHeader));
+	offset += m_Header.stringInfosOffset;
+
+	std::vector<S_NFSStringsTableInfo>	infos;
+	infos.resize(m_Header.stringsCount);
+	memcpy(&infos[0], &data[offset], sizeof(S_NFSStringsTableInfo) * m_Header.stringsCount);
+	offset += sizeof(S_NFSStringsTableInfo) * m_Header.stringsCount;
+
+	uint32 maxLen = 0;
+	for (uint32 i = 0; i < m_Header.stringsCount; ++i)
+	{
+		const S_NFSStringsTableInfo& info = infos[i];
+		if (info.stringLength > maxLen)
+			maxLen = info.stringLength;
+	}
+
+	uint16* tempString = new uint16[maxLen + 8];
+	m_Strings.resize(m_Header.stringsCount);
+	for (uint32 i = 0; i < m_Header.stringsCount; ++i)
+	{
+		const S_NFSStringsTableInfo& info = infos[i];
+
+		memcpy(tempString, &data[info.offset], info.stringLength * (m_Header.charSize >> 3));
+		m_Strings[i] = QString::fromWCharArray(reinterpret_cast<wchar_t*>(&tempString[0]));
+	}
+	delete [] tempString;
+
+	return true;
+}
+
+bool CNFSStringsTable::SaveAsTXT(const QString& fileName)
+{
+	QFile file(fileName);
+	if (file.open(QIODevice::WriteOnly | QIODevice::Text))
+	{
+		QTextStream streamFileOut(&file);
+		streamFileOut.setCodec("UTF-8");
+
+		for (uint32 i = 0; i < m_Header.stringsCount; ++i)
+			streamFileOut << m_Strings[i] << QString::fromUtf8("\n");
+
+		streamFileOut.flush();
+		file.close();
+	}
+
+	return true;
+}

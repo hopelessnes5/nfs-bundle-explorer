@@ -1,0 +1,24 @@
+#ifndef NFSSTRINGSTABLE_H
+#define NFSSTRINGSTABLE_H
+
+#include <QString>
+#include "common.h"
+
+class CNFSStringsTable
+{
+public:
+	CNFSStringsTable();
+	~CNFSStringsTable();
+
+	bool	InitFromData(const Uint8Vector& data);
+	bool	SaveAsTXT(const QString& fileName);
+
+private:
+	typedef std::vector<QString>	QStringsVec;
+
+private:
+	S_NFSStringsTableHeader	m_Header;
+	QStringsVec				m_Strings;
+};
+
+#endif // NFSSTRINGSTABLE_H

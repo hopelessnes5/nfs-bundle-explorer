@@ -1,0 +1,72 @@
+/*
+ * This code is written by iOrange, 2010
+ *  please, remember me if you use this code ;)
+ */
+
+#include "dlgfileinfo.h"
+#include "ui_dlgfileinfo.h"
+
+#include <zlib.h>
+
+
+DlgFileInfo::DlgFileInfo(QWidget *parent)
+	: QDialog(parent)
+	, ui(new Ui::DlgFileInfo)
+{
+	ui->setupUi(this);
+}
+DlgFileInfo::~DlgFileInfo()
+{
+	delete ui;
+}
+
+QString FormatSizeString(uint32 size)
+{
+	uint32 mb = size / (1024 * 1024);					size -= mb * 1024 * 1024;
+	uint32 kb = size / 1024;							size -= kb * 1024;
+	uint32  b = size;
+
+	return QString("%1 MB %2 KB %3 B").arg(mb).arg(kb).arg(b);
+}
+
+QString FileTypeString(uint32 fileType)
+{
+	if (fileType == NFS_FILE_TEXTURE)
+		return QString("texture (%1)").arg(fileType);
+	else if (fileType == NFS_FILE_MODEL)
+		return QString("model (%1)").arg(fileType);
+	else
+		return QString("unknown (%1)").arg(fileType);
+}
+
+
+void DlgFileInfo::SetFileInfo(const S_NFSFileInfo& info, CNFSBundle* bundle)
+{
+	ui->lblFileType->setText(FileTypeString(info.fileType));
+	ui->lblFileHeaderPacked->setText(FormatSizeString(info.hdrCompSize));
+	ui->lblFileHeaderUnpacked->setText(FormatSizeString(info.hdrUncompSize));
+	ui->lblFileDataPacked->setText(FormatSizeString(info.dataCompSize));
+	ui->lblFileDataUnpacked->setText(FormatSizeString(info.dataUncompSize));
+
+	uint32 hdrCRC32 = 0, dataCRC32 = 0, fullCRC32 = 0;
+	Bytef* data = reinterpret_cast<Bytef*>(bundle->GetDataAtOffset(info.fileHeaderOffset));
+	hdrCRC32 = crc32(0, data, info.hdrCompSize);
+
+	if (info.dataCompSize > 0)
+	{
+		data = reinterpret_cast<Bytef*>(bundle->GetDataAtOffset(info.fileBodyOffset));
+		dataCRC32 = crc32(0, data, info.dataCompSize);
+		fullCRC32 = crc32(hdrCRC32, data, info.dataCompSize);
+	}
+	else
+		fullCRC32 = hdrCRC32;
+
+	ui->lblFileHeaderCRC32->setText(QString("%1").arg(hdrCRC32, 0, 16));
+	ui->lblFileDataCRC32->setText(QString("%1").arg(dataCRC32, 0, 16));
+	ui->lblFullFileCRC32->setText(QString("%1").arg(fullCRC32, 0, 16));
+}
+
+void DlgFileInfo::on_pushButton_clicked()
+{
+	this->close();
+}

@@ -1,0 +1,374 @@
+/*
+ * This code is written by iOrange, 2010
+ *  please, remember me if you use this code ;)
+ */
+
+
+#include "DlgBundleAssembler.h"
+#include "ui_DlgBundleAssembler.h"
+
+#include <QFileDialog>
+#include <QMessageBox>
+
+#include "../zlib_adapter.h"
+
+
+DlgBundleAssembler::DlgBundleAssembler(QWidget *parent) :
+	QDialog(parent),
+	ui(new Ui::DlgBundleAssembler)
+{
+	ui->setupUi(this);
+}
+
+DlgBundleAssembler::~DlgBundleAssembler()
+{
+	delete ui;
+}
+
+
+
+bool DlgBundleAssembler::CheckForCorrectNFSFile(const QString& fileName)
+{
+	QFile file(fileName);
+	if (!file.open(QIODevice::ReadOnly))
+		return false;
+
+	uint32 nfsoMagic = 0;
+	uint32 fileType = 0;
+	if (sizeof(nfsoMagic) != file.read(reinterpret_cast<char *>(&nfsoMagic), sizeof(nfsoMagic)))
+		return false;
+	if (sizeof(fileType) != file.read(reinterpret_cast<char *>(&fileType), sizeof(fileType)))
+		return false;
+
+	if (nfsoMagic != MAKEFOURCC('N', 'F', 'S', 'O') || fileType != NFS_FILE_TEXTURE)
+		return false;
+
+	file.close();
+	return true;
+}
+
+int DlgBundleAssembler::AssembleBundle(const QString& bunlePath, const QList<QString>& filesList)
+{
+	CNFSBundle* bundle = new CNFSBundle();
+	if (!bundle->InitFromFile(bunlePath))
+	{
+		MY_SAFE_DELETE(bundle)
+		return FALSE;
+	}
+
+	QFile dest(bunlePath + ".temp");
+	if (!dest.open(QIODevice::WriteOnly))
+	{
+		MY_SAFE_DELETE(bundle)
+		return FALSE;
+	}
+
+	S_NFSBndlHeader header = bundle->GetBundleHeader();
+	dest.write(reinterpret_cast<const char*>(&header), sizeof(header));
+
+	QVector<S_NFSFileInfo> preparedList;
+	preparedList.reserve(bundle->GetFilesCount());
+
+	int i;
+	// iOrange - first pass - write files table
+	uint32 relativeHeaderOffset = 0;
+	uint32 relativeBodyOffset = 0;
+	for (i = 0; i < bundle->GetFilesCount(); ++i)
+	{
+		preparedList.push_back(bundle->GetFileInfo(i));
+		S_NFSFileInfo& info = preparedList.back();
+
+		QString fileStr = QString("file_%1.nfs").arg(i, 4, 10, QChar('0'));
+		int lstIdx = filesList.indexOf(fileStr);
+		if (-1 != lstIdx)
+		{
+			QFile replFile(m_FilesMap[fileStr]);
+			if (!replFile.open(QIODevice::ReadOnly))
+			{
+				MY_SAFE_DELETE(bundle)
+				return FALSE;
+			}
+
+			uint32 nfsoMagic = 0;
+			uint32 nfsFileType = 0;
+			replFile.read(reinterpret_cast<char *>(&nfsoMagic), sizeof(nfsoMagic));
+			replFile.read(reinterpret_cast<char *>(&nfsFileType), sizeof(nfsFileType));
+
+			if (NFS_FILE_TEXTURE == nfsFileType)
+			{
+				if (!this->PrepareTextureFile(replFile, info))
+					return FALSE;
+			}
+			else if (NFS_FILE_MODEL == nfsFileType)
+			{}
+		}
+
+		S_NFSTableEntry entry = bundle->GetFileEntry(i);
+		entry.hdrCompSize = info.hdrCompSize;
+		entry.hdrUncompSize = (info.hdrUncompSize & k_EntryUncompSizeMask) | (entry.hdrUncompSize & ~k_EntryUncompSizeMask);
+		entry.dataCompSize = info.dataCompSize;
+		entry.dataUncompSize = (info.dataUncompSize & k_EntryUncompSizeMask) | (entry.dataUncompSize & ~k_EntryUncompSizeMask);
+		entry.hdrOffset = relativeHeaderOffset;
+		entry.bodyOffset = info.dataCompSize > 0 ? relativeBodyOffset : 0;
+		dest.write(reinterpret_cast<const char*>(&entry), sizeof(entry));
+
+		relativeHeaderOffset += GetAligned(info.hdrCompSize, k_RegularAllocationAlign);
+		relativeBodyOffset += GetAligned(info.dataCompSize, k_BigAllocationAlign);
+	}
+
+	const char nulls[128] = {0};
+
+	// iOrange - second pass - write files headers
+	uint32 baseHeaderOffset = header.headersOffset;
+	for (i = 0; i < bundle->GetFilesCount(); ++i)
+	{
+		const S_NFSFileInfo& info = preparedList[i];
+
+		QString fileStr = QString("file_%1.nfs").arg(i, 4, 10, QChar('0'));
+		int lstIdx = filesList.indexOf(fileStr);
+		if (-1 != lstIdx)
+		{
+			QString hdrFileName = m_FilesMap[fileStr] + "c_hdr";
+			QFile file(hdrFileName);
+			if (!file.open(QIODevice::ReadOnly))
+				return FALSE;
+
+			char* data = new char[file.size()];
+			file.read(data, file.size());
+			file.close();
+			dest.write(data, file.size());
+			delete [] data;
+			uint32 alignedSize = GetAligned(info.hdrCompSize, k_RegularAllocationAlign);
+			uint32 paddingLen = alignedSize - info.hdrCompSize;
+			if (paddingLen > 0)
+				dest.write(nulls, paddingLen);
+
+			baseHeaderOffset += alignedSize;
+		}
+		else
+		{
+			const char* data = reinterpret_cast<const char*>(bundle->GetDataAtOffset(info.fileHeaderOffset));
+			dest.write(data, info.hdrCompSize);
+			uint32 alignedSize = GetAligned(info.hdrCompSize, k_RegularAllocationAlign);
+			uint32 paddingLen = alignedSize - info.hdrCompSize;
+			if (paddingLen > 0)
+				dest.write(nulls, paddingLen);
+
+			baseHeaderOffset += alignedSize;
+		}
+	}
+
+	uint32 alignedHeaderOffset = GetAligned(baseHeaderOffset, k_BigAllocationAlign);
+	uint32 headerToBodyPadding = alignedHeaderOffset - baseHeaderOffset;
+	if (headerToBodyPadding > 0)
+		dest.write(nulls, headerToBodyPadding);
+
+	// iOrange - third pass - write files bodies
+	uint32 baseBodiesOffset = alignedHeaderOffset;
+	for (i = 0; i < bundle->GetFilesCount(); ++i)
+	{
+		const S_NFSFileInfo& info = preparedList[i];
+		if (info.dataCompSize == 0)
+			continue;
+
+		QString fileStr = QString("file_%1.nfs").arg(i, 4, 10, QChar('0'));
+		int lstIdx = filesList.indexOf(fileStr);
+		if (-1 != lstIdx)
+		{
+			QString bodyFileName = m_FilesMap[fileStr] + "c_body";
+			QFile file(bodyFileName);
+			if (!file.open(QIODevice::ReadOnly))
+				return FALSE;
+
+			char* data = new char[file.size()];
+			file.read(data, file.size());
+			file.close();
+			dest.write(data, file.size());
+			delete [] data;
+			uint32 alignedSize = GetAligned(info.dataCompSize, k_BigAllocationAlign);
+			uint32 paddingLen = alignedSize - info.dataCompSize;
+			if (paddingLen > 0)
+				dest.write(nulls, paddingLen);
+
+			baseBodiesOffset += alignedSize;
+		}
+		else
+		{
+			const char* data = reinterpret_cast<const char*>(bundle->GetDataAtOffset(info.fileBodyOffset));
+			dest.write(data, info.dataCompSize);
+			uint32 alignedSize = GetAligned(info.dataCompSize, k_BigAllocationAlign);
+			uint32 paddingLen = alignedSize - info.dataCompSize;
+			if (paddingLen > 0)
+				dest.write(nulls, paddingLen);
+
+			baseBodiesOffset += alignedSize;
+		}
+	}
+
+	// iOrange - last thing - fixup bodies offset in bundle header
+	header.bodysOffset = alignedHeaderOffset;
+	header.bundleSize = header.bundleSize2 = header.dataEnd = baseBodiesOffset;
+	dest.seek(0);
+	dest.write(reinterpret_cast<const char*>(&header), sizeof(header));
+
+	dest.close();
+	return TRUE;
+}
+
+int DlgBundleAssembler::PrepareTextureFile(QFile& file, S_NFSFileInfo& info) const
+{
+	S_NFSTextureHeader header;
+	file.read(reinterpret_cast<char *>(&header), sizeof(header));
+	Uint8Vector hdrCompressed;
+	if (zlib_adapter::CompressMemory(&header, sizeof(header), hdrCompressed) <= 0)
+		return FALSE;
+
+	info.hdrUncompSize = sizeof(header);
+	info.hdrCompSize = static_cast<uint32>(hdrCompressed.size());
+
+	uint32 fileBodySize = static_cast<uint32>(file.size() - file.pos());
+	char* fileBody = new char[fileBodySize];
+	file.read(fileBody, fileBodySize);
+	Uint8Vector bodyCompressed;
+	if (zlib_adapter::CompressMemory(fileBody, fileBodySize, bodyCompressed) <= 0)
+	{
+		delete [] fileBody;
+		return FALSE;
+	}
+	delete [] fileBody;
+
+	info.dataUncompSize = fileBodySize;
+	info.dataCompSize = static_cast<uint32>(bodyCompressed.size());
+
+	QString hdrFileName = file.fileName() + "c_hdr";
+	QString bodyFileName = file.fileName() + "c_body";
+
+	QFile hdrFile(hdrFileName);
+	if (!hdrFile.open(QIODevice::WriteOnly))
+		return FALSE;
+	hdrFile.write(reinterpret_cast<const char*>(&hdrCompressed[0]), hdrCompressed.size());
+	hdrFile.close();
+
+	QFile bodyFile(bodyFileName);
+	if (!bodyFile.open(QIODevice::WriteOnly))
+		return FALSE;
+	bodyFile.write(reinterpret_cast<const char*>(&bodyCompressed[0]), bodyCompressed.size());
+	bodyFile.close();
+}
+
+
+void DlgBundleAssembler::on_btnCancel_clicked()
+{
+	this->close();
+}
+
+void DlgBundleAssembler::on_btnAddBundlesDir_clicked()
+{
+	QString name = QFileDialog::getOpenFileName(this, tr("Choose bundle file"), QString(), tr("NFS:HP bundle (*.bndl *.bundle *.bin)"));
+	if (name.length() < 3)
+		return;
+
+	QFileInfo info(name);
+	QString fileName = info.fileName();
+	if (m_BundlesMap.find(fileName) != m_BundlesMap.end())
+	{
+		QMessageBox::warning(this, tr("Warning"), tr("This bundle is already in the list!"));
+			return;
+	}
+
+	QListWidgetItem* item = new QListWidgetItem(fileName);
+	item->setFlags(Qt::ItemIsUserCheckable|Qt::ItemIsSelectable|Qt::ItemIsEnabled);
+	item->setCheckState(Qt::Unchecked);
+	ui->lstBundles->addItem(item);
+
+	m_BundlesMap.insert(fileName, name);
+}
+
+void DlgBundleAssembler::on_lstBundles_itemChanged(QListWidgetItem* item)
+{
+	bool checked = (item->checkState() == Qt::Checked);
+	for (int i = 0; i < ui->lstBundles->count(); ++i)
+	{
+		QListWidgetItem* it = ui->lstBundles->item(i);
+		if (it != item && checked)
+			it->setCheckState(Qt::Unchecked);
+	}
+}
+
+void DlgBundleAssembler::on_btnAddFilesDir_clicked()
+{
+	QStringList files = QFileDialog::getOpenFileNames(this, tr("Choose file for replace"), QString(), tr("NFS:HP files (*.nfs)"));
+	if (files.length() < 1)
+		return;
+
+	QStringList::Iterator fileIt = files.begin();
+	while (fileIt != files.end())
+	{
+		if (this->CheckForCorrectNFSFile(*fileIt))
+		{
+			QFileInfo info(*fileIt);
+			QString fileName = info.fileName();
+
+			if (m_FilesMap.find(fileName) == m_FilesMap.end())
+			{
+				QListWidgetItem* item = new QListWidgetItem(fileName);
+				item->setFlags(Qt::ItemIsUserCheckable|Qt::ItemIsSelectable|Qt::ItemIsEnabled);
+				item->setCheckState(Qt::Unchecked);
+				ui->lstFilesToReplace->addItem(item);
+
+				m_FilesMap.insert(fileName, *fileIt);
+			}
+		}
+		++fileIt;
+	}
+}
+
+void DlgBundleAssembler::on_btnBundlesClear_clicked()
+{
+	if (QMessageBox::Yes == QMessageBox::question(this, tr("Question"), tr("Do you really want to clear bundles list?"), QMessageBox::Yes, QMessageBox::No))
+	{
+		ui->lstBundles->clear();
+		m_BundlesMap.clear();
+	}
+}
+
+void DlgBundleAssembler::on_btnBundlesClear_2_clicked()
+{
+	if (QMessageBox::Yes == QMessageBox::question(this, tr("Question"), tr("Do you really want to clear files list?"), QMessageBox::Yes, QMessageBox::No))
+	{
+		ui->lstFilesToReplace->clear();
+		m_FilesMap.clear();
+	}
+}
+
+void DlgBundleAssembler::on_btnAssemble_clicked()
+{
+	QListWidgetItem* bundleItem = NULL;
+
+	for (int i = 0; i < ui->lstBundles->count(); ++i)
+	{
+		QListWidgetItem* it = ui->lstBundles->item(i);
+		if (Qt::Checked == it->checkState())
+			bundleItem = it;
+	}
+	if (!bundleItem)
+	{
+		QMessageBox::critical(this, tr("Error!"), tr("You must have checked bundle in the list"));
+		return;
+	}
+
+	QList<QString> files;
+	for (int i = 0; i < ui->lstFilesToReplace->count(); ++i)
+	{
+		QListWidgetItem* it = ui->lstFilesToReplace->item(i);
+		if (Qt::Checked == it->checkState())
+			files.push_back(it->text());
+	}
+	if (files.empty())
+	{
+		QMessageBox::critical(this, tr("Error!"), tr("You must have checked files in the list"));
+			return;
+	}
+
+	this->AssembleBundle(m_BundlesMap[bundleItem->text()], files);
+}

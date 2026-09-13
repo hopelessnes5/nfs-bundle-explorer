@@ -1,0 +1,645 @@
+#ifndef	__NFSMath_h__
+#define	__NFSMath_h__
+
+#include <cmath>
+#include "NFSTypes.h"
+
+
+//===========================================================================
+//
+// 16 bit floating point numbers
+//
+//===========================================================================
+
+#define NFS_16F_DIG          3                // # of decimal digits of precision
+#define NFS_16F_EPSILON      4.8875809e-4f    // smallest such that 1.0 + epsilon != 1.0
+#define NFS_16F_MANT_DIG     11               // # of bits in mantissa
+#define NFS_16F_MAX          6.550400e+004    // max value
+#define NFS_16F_MAX_10_EXP   4                // max decimal exponent
+#define NFS_16F_MAX_EXP      15               // max binary exponent
+#define NFS_16F_MIN          6.1035156e-5f    // min positive value
+#define NFS_16F_MIN_10_EXP   (-4)             // min decimal exponent
+#define NFS_16F_MIN_EXP      (-14)            // min binary exponent
+#define NFS_16F_RADIX        2                // exponent radix
+#define NFS_16F_ROUNDS       1                // addition rounding: near
+#define NFS_16F_SIGN_MASK    0x8000
+#define NFS_16F_EXP_MASK     0x7C00
+#define NFS_16F_FRAC_MASK    0x03FF
+
+struct float16
+{
+public:
+	float16() {}
+	float16(float f)
+	{
+		value = Float32ToFloat16(f);
+	}
+	float16(const float16& other)
+	{
+		value = other.value;
+	}
+
+	// casting
+	operator float ()
+	{
+		return Float16ToFloat32(value);
+	}
+
+	// casting
+	operator const float () const
+	{
+		return Float16ToFloat32(value);
+	}
+
+	// binary operators
+	bool operator == (const float16& f) const
+	{
+		return this->IsEqual(f);
+
+	}
+	bool operator != (const float16& f) const
+	{
+		return !this->IsEqual(f);
+	}
+
+private:
+	bool IsEqual(const float16& f) const
+	{
+		// At least one is NaN
+		if(((value & 0x7C00) == 0x7C00 && (value & 0x03FF))
+			|| ((f.value & 0x7C00) == 0x7C00 && (f.value & 0x03FF)))
+			return false;
+		// +/- Zero
+		else if((value & ~0x8000) == 0 && (f.value & ~0x8000) == 0)
+			return true;
+		else
+			return value == f.value;
+	}
+
+	uint16 Float32ToFloat16(const float& x) const
+	{
+		uint16	sh = 0;
+
+		union {
+			float floatI;
+			uint32 i;
+		};
+		floatI = x;
+
+		//	unsigned int i = *((unsigned int *) &x);
+		int e = ((i >> 23) & 0xFF) - 112;
+		int m =  i & 0x007FFFFF;
+
+		sh = (i >> 16) & 0x8000;
+		if (e <= 0){
+			// Denorm
+			m = ((m | 0x00800000) >> (1 - e)) + 0x1000;
+			sh |= (m >> 13);
+		} else if (e == 143){
+			sh |= 0x7C00;
+			if (m != 0){
+				// NAN
+				m >>= 13;
+				sh |= m | (m == 0);
+			}
+		} else {
+			m += 0x1000;
+			if (m & 0x00800000){
+				// Mantissa overflow
+				m = 0;
+				e++;
+			}
+			if (e >= 31){
+				// Exponent overflow
+				sh |= 0x7C00;
+			} else {
+				sh |= (e << 10) | (m >> 13);
+			}
+		}
+
+		return sh;
+	}
+
+	float Float16ToFloat32(const uint16& sh) const
+	{
+		union {
+			unsigned int s;
+			float result;
+		};
+
+		s = (sh & 0x8000) << 16;
+		unsigned int e = (sh >> 10) & 0x1F;
+		unsigned int m = sh & 0x03FF;
+
+		if (e == 0){
+			// +/- 0
+			if (m == 0) return result;
+
+			// Denorm
+			while ((m & 0x0400) == 0){
+				m += m;
+				e--;
+			}
+			e++;
+			m &= ~0x0400;
+		} else if (e == 31){
+			// INF / NAN
+			s |= 0x7F800000 | (m << 13);
+			return result;
+		}
+
+		s |= ((e + 112) << 23) | (m << 13);
+
+		return result;
+	}
+
+protected:
+	uint16	value;
+};
+
+
+
+
+
+#define	MY_PI			(3.14159265358979323846f)
+#define	MY_DEG2RAD		(MY_PI / 180.0f)
+#define	MY_RAD2DEG		(180.0f / MY_PI)
+#define	MY_EPS			(1e-6f)
+#define	MY_INV255		(1.0f / 255.0f)
+
+// evil-magic Reciprocal Square Root calculation lifted from Q3 source code
+inline float Rsqrt(float x)
+{
+	union {
+		float	r;
+		int32	i;
+	};
+	float y;
+
+	r = x;
+	y = x * 0.5f;
+	i = 0x5f3759df - (i >> 1);
+	r = r * (1.5f - r * r * y);
+
+	return r;
+}
+
+template <typename T>
+class _vec2
+{
+public:
+	_vec2(void) : x(0.0f), y(0.0f) {}
+	_vec2(T _x, T _y) : x(_x), y(_y) {}
+	_vec2(const _vec2<T>& other) : x(other.x), y(other.y) {}
+
+	inline const _vec2<T> operator * (float f) const { return _vec2<T>(x * f, y * f); }
+	inline const _vec2<T> operator / (float f) const { return _vec2<T>(x / f, y / f); }
+	inline const _vec2<T> operator + (const _vec2<T>& v) const { return _vec2<T>(x + v.x, y + v.y); }
+	inline const _vec2<T> operator - () const { return _vec2<T>(-x, -y); }
+	inline const _vec2<T> operator - (const _vec2<T>& v) const { return _vec2<T>(x - v.x, y - v.y); }
+
+	inline _vec2<T>& operator *= (float f) { return *this = *this * f; }
+	inline _vec2<T>& operator /= (float f) { return *this = *this / f; }
+	inline _vec2<T>& operator += (const _vec2<T>& v) { return *this = *this + v; }
+	inline _vec2<T>& operator -= (const _vec2<T>& v) { return *this = *this - v; }
+
+	inline operator T*() { return v; }
+	inline operator const T*() const { return v; }
+
+	inline T& operator[](int i) { return v[i]; }
+	inline const T operator[](int i) const { return v[i]; }
+
+	inline T length(void) const { return static_cast<T>(std::sqrt(x * x + y * y)); }
+
+	inline void normalize(void)
+	{
+		T inv = static_cast<T>(Rsqrt(x * x + y * y));
+		x *= inv;
+		y *= inv;
+	}
+
+public:
+	union {
+		struct {
+			T x, y;
+		};
+		T v[2];
+	};
+};
+
+typedef	_vec2<float>	vec2, vec2f;
+typedef	_vec2<double>	vec2d;
+
+
+template <typename T>
+class _vec3
+{
+public:
+	static _vec3<T> Fromuint32(uint32 dw)
+	{
+		static const T inv255 = T(MY_INV255);
+		return _vec3<T>(static_cast<T>((dw & 0x00ff0000) >> 16) * inv255,
+						static_cast<T>((dw & 0x0000ff00) >>  8) * inv255,
+						static_cast<T>((dw & 0x000000ff) >>  0) * inv255);
+	}
+
+public:
+	_vec3(void) : x(0.0f), y(0.0f), z(0.0f) {}
+	_vec3(T _x, T _y, T _z) : x(_x), y(_y), z(_z) {}
+	_vec3(const _vec3<T>& other) : x(other.x), y(other.y), z(other.z) {}
+
+	inline const _vec3<T> operator * (float f) const { return _vec3<T>(x * f,y * f,z * f); }
+	inline const _vec3<T> operator / (float f) const { return _vec3<T>(x / f,y / f,z / f); }
+	inline const _vec3<T> operator + (const _vec3<T>& v) const { return _vec3<T>(x + v.x,y + v.y,z + v.z); }
+	inline const _vec3<T> operator - () const { return _vec3(-x,-y,-z); }
+	inline const _vec3<T> operator - (const _vec3<T>& v) const { return _vec3<T>(x - v.x,y - v.y,z - v.z); }
+
+	inline _vec3<T>& operator *= (float f) { return *this = *this * f; }
+	inline _vec3<T>& operator /= (float f) { return *this = *this / f; }
+	inline _vec3<T>& operator += (const _vec3<T>& v) { return *this = *this + v; }
+	inline _vec3<T>& operator -= (const _vec3<T>& v) { return *this = *this - v; }
+
+	inline operator T*() { return v; }
+	inline operator const T*() const { return v; }
+
+	inline T& operator[](int i) { return v[i]; }
+	inline const T operator[](int i) const { return v[i]; }
+
+	inline T length( void ) const { return static_cast<T>(std::sqrt(x * x + y * y + z * z)); }
+
+	inline void normalize( void )
+	{
+		T inv = static_cast<T>(Rsqrt(x * x + y * y + z * z));
+		x *= inv;
+		y *= inv;
+		z *= inv;
+	}
+
+public:
+	union {
+		struct {
+			T x, y, z;
+		};
+		T v[3];
+	};
+};
+
+template <typename T> inline T dot(const _vec3<T>& v1, const _vec3<T>& v2)
+{
+	return v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
+}
+template <typename T> inline _vec3<T> cross(const _vec3<T>& v1, const _vec3<T>& v2)
+{
+	return _vec3<T>(v1.y * v2.z - v1.z * v2.y,
+					v1.z * v2.x - v1.x * v2.z,
+					v1.x * v2.y - v1.y * v2.x);
+}
+
+typedef	_vec3<float>	vec3, vec3f;
+typedef	_vec3<double>	vec3d;
+
+
+
+template <typename T>
+class _quat
+{
+public:
+
+	union {
+		struct {
+			T x, y, z, w;
+		};
+		T v[4];
+	};
+
+	_quat() : x(T(0)), y(T(0)), z(T(0)), w(T(1)) {}
+	_quat(const _quat<T>& q) : x(q.x), y(q.y), z(q.z), w(q.w) {}
+	_quat(T _x, T _y, T _z, T _w) : x(_x), y(_y), z(_z), w(_w) {}
+
+	operator T*() { return v; }
+	operator const T*() const { return v; }
+
+	T& operator[]( int i ) { return v[i]; }
+	const T operator[]( int i ) const { return v[i]; }
+
+	_quat<T>& operator = (const _quat<T>& other)
+	{
+		x = other.x;
+		y = other.y;
+		z = other.z;
+		w = other.w;
+		return *this;
+	}
+
+	_quat<T> operator * (float a) const { return _quat<T>(x * a, y * a, z * a, w * a); }
+	_quat<T> operator * (const _quat<T>& q) const
+	{
+		return _quat<T>(w * q.x + x * q.w + y * q.z - z * q.y,
+						w * q.y + y * q.w + z * q.x - x * q.z,
+						w * q.z + z * q.w + x * q.y - y * q.x,
+						w * q.w - x * q.x - y * q.y - z * q.z);
+	}
+	_vec3<T> operator * (const _vec3<T>& p) const
+	{
+		// original code from DooM 3 SDK
+		float xxzz = x*x - z*z;
+		float wwyy = w*w - y*y;
+
+		float xw2 = x*w*2.0f;
+		float xy2 = x*y*2.0f;
+		float xz2 = x*z*2.0f;
+		float yw2 = y*w*2.0f;
+		float yz2 = y*z*2.0f;
+		float zw2 = z*w*2.0f;
+
+		return _vec3<T>(
+			(xxzz + wwyy)*p.x	+ (xy2 + zw2)*p.y		+ (xz2 - yw2)*p.z,
+			(xy2 - zw2)*p.x		+ (y*y+w*w-x*x-z*z)*p.y	+ (yz2 + xw2)*p.z,
+			(xz2 + yw2)*p.x		+ (yz2 - xw2)*p.y		+ (wwyy - xxzz)*p.z
+			);
+	}
+
+	_quat<T> operator - () const { return _quat<T>(-x, -y, -z, -w); }
+	_quat<T> operator + (const _quat<T>& q) const { return _quat<T>(x + q.x, y + q.y, z + q.z, w + q.w); }
+
+	_quat<T> inverse(void) const
+	{
+		T lenSq = x * x + y * y + z * z + w * w;
+		if (lenSq > T(0))
+		{
+			T invLenSq = T(1) / lenSq;
+			return _quat<T>(-x * invLenSq, -y * invLenSq, -z * invLenSq, w * invLenSq);
+		}
+		else
+		{
+			assert(false);
+			return _quat<T>(T(0), T(0), T(0), T(1));
+		}
+	}
+	_quat<T>& invert(void) { return *this = this->inverse(); }
+
+	_quat<T>& normalize(void)
+	{
+		T len = static_cast<T>(std::sqrt(x * x + y * y + z * z + w * w));
+		if (len)
+		{
+			T ilength = T(1) / len;
+			x *= ilength;
+			y *= ilength;
+			z *= ilength;
+			w *= ilength;
+		}
+		return *this;
+	}
+	T yaw(void) const	{ return std::asin(-2 * (x * z - w * y)); }
+	T pitch(void) const	{ return std::atan2(2 * (y * z + w * x), w * w - x * x - y * y + z * z); }
+	T roll(void) const	{ return std::atan2(2 * (x * y + w * z), w * w + x * x - y * y - z * z); }
+};
+
+typedef _quat<float>	quat, quatf;
+typedef _quat<double>	quatd;
+
+template <typename T> inline _quat<T> slerp(const _quat<T>& from, const _quat<T>& to, float t)
+{
+	_quat<T> temp;
+	float omega, cosom, sinom, scale0, scale1;
+
+	if (t <= 0.0f)
+		return from;
+	else if (t >= 1.0f)
+		return to;
+
+	cosom = from.x * to.x + from.y * to.y + from.z * to.z + from.w * to.w;
+	if (cosom < 0.0f)
+	{
+		temp  = -to;
+		cosom = -cosom;
+	}
+	else
+		temp = to;
+
+	if ((1.0f - cosom) > MY_EPS)
+	{
+		omega  = std::acos(cosom);
+		sinom  = 1.0f / std::sin(omega);
+		scale0 = std::sin((1.0f - t) * omega) * sinom;
+		scale1 = std::sin(t * omega) * sinom;
+	}
+	else
+	{
+		scale0 = 1.0f - t;
+		scale1 = t;
+	}
+
+	return (from * scale0) + (temp * scale1);
+}
+
+template <typename T>
+class _mat4
+{
+public:
+	_mat4()
+	{
+		mat[0] = 1.0; mat[4] = 0.0; mat[8] = 0.0; mat[12] = 0.0;
+		mat[1] = 0.0; mat[5] = 1.0; mat[9] = 0.0; mat[13] = 0.0;
+		mat[2] = 0.0; mat[6] = 0.0; mat[10] = 1.0; mat[14] = 0.0;
+		mat[3] = 0.0; mat[7] = 0.0; mat[11] = 0.0; mat[15] = 1.0;
+	}
+	_mat4(const _mat4<T>& m)
+	{
+		mat[0] = m[0]; mat[4] = m[4]; mat[8] = m[8]; mat[12] = m[12];
+		mat[1] = m[1]; mat[5] = m[5]; mat[9] = m[9]; mat[13] = m[13];
+		mat[2] = m[2]; mat[6] = m[6]; mat[10] = m[10]; mat[14] = m[14];
+		mat[3] = m[3]; mat[7] = m[7]; mat[11] = m[11]; mat[15] = m[15];
+	}
+
+	_mat4<T>& set(const _quat<T>& q)
+	{
+		T wx, wy, wz, xx, yy, yz, xy, xz, zz, x2, y2, z2;
+
+		x2 = q.x + q.x;	y2 = q.y + q.y;	z2 = q.z + q.z;
+		xx = q.x * x2;	xy = q.x * y2;	xz = q.x * z2;
+		yy = q.y * y2;	yz = q.y * z2;	zz = q.z * z2;
+		wx = q.w * x2;	wy = q.w * y2;	wz = q.w * z2;
+
+		mat[0] = 1.0f - (yy + zz);	mat[4] = xy + wz;			mat[8] = xz - wy;
+		mat[1] = xy - wz;			mat[5] = 1.0f - (xx + zz);	mat[9] = yz + wx;
+		mat[2] = xz + wy;			mat[6] = yz - wx;			mat[10] = 1.0f - (xx + yy);
+
+		mat[ 3] = 0.0f;
+		mat[ 7] = 0.0f;
+		mat[11] = 0.0f;
+		mat[12] = 0.0f;
+		mat[13] = 0.0f;
+		mat[14] = 0.0f;
+		mat[15] = 1.0f;
+
+		return *this;
+	}
+
+	inline _mat4<T> operator * (const _mat4<T>& m) const
+	{
+		_mat4<T> ret;
+		ret[0] = mat[0] * m[0] + mat[4] * m[1] + mat[8] * m[2] + mat[12] * m[3];
+		ret[1] = mat[1] * m[0] + mat[5] * m[1] + mat[9] * m[2] + mat[13] * m[3];
+		ret[2] = mat[2] * m[0] + mat[6] * m[1] + mat[10] * m[2] + mat[14] * m[3];
+		ret[3] = mat[3] * m[0] + mat[7] * m[1] + mat[11] * m[2] + mat[15] * m[3];
+		ret[4] = mat[0] * m[4] + mat[4] * m[5] + mat[8] * m[6] + mat[12] * m[7];
+		ret[5] = mat[1] * m[4] + mat[5] * m[5] + mat[9] * m[6] + mat[13] * m[7];
+		ret[6] = mat[2] * m[4] + mat[6] * m[5] + mat[10] * m[6] + mat[14] * m[7];
+		ret[7] = mat[3] * m[4] + mat[7] * m[5] + mat[11] * m[6] + mat[15] * m[7];
+		ret[8] = mat[0] * m[8] + mat[4] * m[9] + mat[8] * m[10] + mat[12] * m[11];
+		ret[9] = mat[1] * m[8] + mat[5] * m[9] + mat[9] * m[10] + mat[13] * m[11];
+		ret[10] = mat[2] * m[8] + mat[6] * m[9] + mat[10] * m[10] + mat[14] * m[11];
+		ret[11] = mat[3] * m[8] + mat[7] * m[9] + mat[11] * m[10] + mat[15] * m[11];
+		ret[12] = mat[0] * m[12] + mat[4] * m[13] + mat[8] * m[14] + mat[12] * m[15];
+		ret[13] = mat[1] * m[12] + mat[5] * m[13] + mat[9] * m[14] + mat[13] * m[15];
+		ret[14] = mat[2] * m[12] + mat[6] * m[13] + mat[10] * m[14] + mat[14] * m[15];
+		ret[15] = mat[3] * m[12] + mat[7] * m[13] + mat[11] * m[14] + mat[15] * m[15];
+		return ret;
+	}
+
+	inline _mat4<T>& operator *= (const _mat4<T>& m) { return *this = *this * m; }
+
+	inline operator float*() { return mat; }
+	inline operator const float*() const { return mat; }
+
+	_mat4<T>& SetTranslateVector(const _vec3<T>& v)
+	{
+		mat[12] = v.x;
+		mat[13] = v.y;
+		mat[14] = v.z;
+		return *this;
+	}
+	_vec3<T> GetTranslateVector(void) const
+	{
+		return _vec3<T>(mat[12], mat[13], mat[14]);
+	}
+
+	_vec3<T> TransformPoint(const _vec3<T>& b) const
+	{
+		return _vec3<T>(mat[0] * b.x + mat[4] * b.y + mat[ 8] * b.z + mat[12],
+						mat[1] * b.x + mat[5] * b.y + mat[ 9] * b.z + mat[13],
+						mat[2] * b.x + mat[6] * b.y + mat[10] * b.z + mat[14]);
+	}
+	_vec3<T> TransformDirection(const _vec3<T>& b) const
+	{
+		return _vec3<T>(mat[0] * b.x + mat[4] * b.y + mat[ 8] * b.z,
+						mat[1] * b.x + mat[5] * b.y + mat[ 9] * b.z,
+						mat[2] * b.x + mat[6] * b.y + mat[10] * b.z);
+	}
+
+	_mat4<T> GetInverse(void)
+	{
+		_mat4<T> ret;
+		T det;
+		det = mat[0] * (mat[5] * (mat[10] * mat[15] - mat[14] * mat[11]) - mat[9] * (mat[6] * mat[15] - mat[14] * mat[7]) + mat[13] * (mat[6] * mat[11] - mat[10] * mat[7]));
+		det -= mat[4] * (mat[1] * (mat[10] * mat[15] - mat[14] * mat[11]) - mat[9] * (mat[2] * mat[15] - mat[14] * mat[3]) + mat[13] * (mat[2] * mat[11] - mat[10] * mat[3]));
+		det += mat[8] * (mat[1] * (mat[6] * mat[15] - mat[14] * mat[7]) - mat[5] * (mat[2] * mat[15] - mat[14] * mat[3]) + mat[13] * (mat[2] * mat[7] - mat[6] * mat[3]));
+		det -= mat[12] * (mat[1] * (mat[6] * mat[11] - mat[10] * mat[7]) - mat[5] * (mat[2] * mat[11] - mat[10] * mat[3]) + mat[9] * (mat[2] * mat[7] - mat[6] * mat[3]));
+
+		if (det < MY_EPS)
+			return ret;
+
+		T idet = T(1.0) / det;
+		ret[0] = (mat[5] * (mat[10] * mat[15] - mat[14] * mat[11]) - mat[9] * (mat[6] * mat[15] - mat[14] * mat[7]) + mat[13] * (mat[6] * mat[11] - mat[10] * mat[7])) * idet;
+		ret[1] = -(mat[1] * (mat[10] * mat[15] - mat[14] * mat[11]) - mat[9] * (mat[2] * mat[15] - mat[14] * mat[3]) + mat[13] * (mat[2] * mat[11] - mat[10] * mat[3])) * idet;
+		ret[2] = (mat[1] * (mat[6] * mat[15] - mat[14] * mat[7]) - mat[5] * (mat[2] * mat[15] - mat[14] * mat[3]) + mat[13] * (mat[2] * mat[7] - mat[6] * mat[3])) * idet;
+		ret[3] = -(mat[1] * (mat[6] * mat[11] - mat[10] * mat[7]) - mat[5] * (mat[2] * mat[11] - mat[10] * mat[3]) + mat[9] * (mat[2] * mat[7] - mat[6] * mat[3])) * idet;
+		ret[4] = -(mat[4] * (mat[10] * mat[15] - mat[14] * mat[11]) - mat[8] * (mat[6] * mat[15] - mat[14] * mat[7]) + mat[12] * (mat[6] * mat[11] - mat[10] * mat[7])) * idet;
+		ret[5] = (mat[0] * (mat[10] * mat[15] - mat[14] * mat[11]) - mat[8] * (mat[2] * mat[15] - mat[14] * mat[3]) + mat[12] * (mat[2] * mat[11] - mat[10] * mat[3])) * idet;
+		ret[6] = -(mat[0] * (mat[6] * mat[15] - mat[14] * mat[7]) - mat[4] * (mat[2] * mat[15] - mat[14] * mat[3]) + mat[12] * (mat[2] * mat[7] - mat[6] * mat[3])) * idet;
+		ret[7] = (mat[0] * (mat[6] * mat[11] - mat[10] * mat[7]) - mat[4] * (mat[2] * mat[11] - mat[10] * mat[3]) + mat[8] * (mat[2] * mat[7] - mat[6] * mat[3])) * idet;
+		ret[8] = (mat[4] * (mat[9] * mat[15] - mat[13] * mat[11]) - mat[8] * (mat[5] * mat[15] - mat[13] * mat[7]) + mat[12] * (mat[5] * mat[11] - mat[9] * mat[7])) * idet;
+		ret[9] = -(mat[0] * (mat[9] * mat[15] - mat[13] * mat[11]) - mat[8] * (mat[1] * mat[15] - mat[13] * mat[3]) + mat[12] * (mat[1] * mat[11] - mat[9] * mat[3])) * idet;
+		ret[10] = (mat[0] * (mat[5] * mat[15] - mat[13] * mat[7]) - mat[4] * (mat[1] * mat[15] - mat[13] * mat[3]) + mat[12] * (mat[1] * mat[7] - mat[5] * mat[3])) * idet;
+		ret[11] = -(mat[0] * (mat[5] * mat[11] - mat[9] * mat[7]) - mat[4] * (mat[1] * mat[11] - mat[9] * mat[3]) + mat[8] * (mat[1] * mat[7] - mat[5] * mat[3])) * idet;
+		ret[12] = -(mat[4] * (mat[9] * mat[14] - mat[13] * mat[10]) - mat[8] * (mat[5] * mat[14] - mat[13] * mat[6]) + mat[12] * (mat[5] * mat[10] - mat[9] * mat[6])) * idet;
+		ret[13] = (mat[0] * (mat[9] * mat[14] - mat[13] * mat[10]) - mat[8] * (mat[1] * mat[14] - mat[13] * mat[2]) + mat[12] * (mat[1] * mat[10] - mat[9] * mat[2])) * idet;
+		ret[14] = -(mat[0] * (mat[5] * mat[14] - mat[13] * mat[6]) - mat[4] * (mat[1] * mat[14] - mat[13] * mat[2]) + mat[12] * (mat[1] * mat[6] - mat[5] * mat[2])) * idet;
+		ret[15] = (mat[0] * (mat[5] * mat[10] - mat[9] * mat[6]) - mat[4] * (mat[1] * mat[10] - mat[9] * mat[2]) + mat[8] * (mat[1] * mat[6] - mat[5] * mat[2])) * idet;
+
+		return ret;
+	}
+
+	_mat4<T>& RotateX(float angle)	// rotate counter-clockwiose, angle in radians
+	{
+		_mat4<T> a;
+		float cosine = std::cos(angle);
+		float sine   = std::sin(angle);
+
+		a.m11 = cosine;
+		a.m12 = sine;
+		a.m21 = -sine;
+		a.m22 = cosine;
+
+		*this = *this * a;
+
+		return *this;
+	}
+	_mat4<T>& RotateY(float angle)	// rotate counter-clockwiose, angle in radians
+	{
+		_mat4<T> a;
+		float cosine = std::cos(angle);
+		float sine   = std::sin(angle);
+
+		a.m00 = cosine;
+		a.m02 = -sine;
+		a.m20 = sine;
+		a.m22 = cosine;
+
+		*this = *this * a;
+
+		return *this;
+	}
+	_mat4<T>& RotateZ(float angle)	// rotate counter-clockwiose, angle in radians
+	{
+		_mat4<T> a;
+		float cosine = std::cos(angle);
+		float sine   = std::sin(angle);
+
+		a.m00 = cosine;
+		a.m01 = sine;
+		a.m10 = -sine;
+		a.m11 = cosine;
+
+		*this = *this * a;
+
+		return *this;
+	}
+
+	_vec3<T> get_euler(void) const
+	{
+		_vec3<T> ret;
+		T cy = std::sqrt(m12 * m12 + m22 * m22);
+		if (cy > 16*MY_EPS)
+		{
+			ret.z = std::atan2(m01, m00);
+			ret.y = std::atan2(-m02, cy);
+			ret.x = std::atan2(m12, m22);
+		}
+		else
+		{
+			ret.z = std::atan2(-m10, m11);
+			ret.y = std::atan2(-m02, cy);
+			ret.x = 0;
+		}
+		return ret;
+	}
+
+public:
+	union {
+		struct {
+			T	m00, m10, m20, m30,
+				m01, m11, m21, m31,
+				m02, m12, m22, m32,
+				m03, m13, m23, m33;
+		};
+		T mat[16];
+	};
+};
+
+typedef _mat4<float>	mat4, mat4f;
+typedef _mat4<double>	mat4d;
+
+#endif	// __NFSMath_h__

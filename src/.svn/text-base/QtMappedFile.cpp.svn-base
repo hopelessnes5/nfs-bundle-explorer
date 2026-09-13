@@ -1,0 +1,52 @@
+#include "QtMappedFile.h"
+
+QtMappedFile::QtMappedFile(QObject *parent)
+	: QFile(parent)
+{
+}
+
+QtMappedFile::QtMappedFile(const QString& fileName)
+	: QFile(fileName)
+	, m_Offset(0)
+{
+	QFile::open(QIODevice::ReadOnly);
+	m_Size = QFile::size();
+	m_Data = QFile::map(0, m_Size);
+	assert(NULL != m_Data);
+}
+QtMappedFile::~QtMappedFile()
+{
+	QFile::unmap(m_Data);
+	QFile::close();
+}
+
+uint8 QtMappedFile::ReadUint8(void)
+{
+	uint8 u = *m_Data;
+	m_Offset++;
+	return u;
+}
+
+uint32 QtMappedFile::ReadUint32(void)
+{
+	uint32 u;
+	this->ReadData(&u, sizeof(u));
+	return u;
+}
+
+size_t QtMappedFile::ReadData(void* data, size_t len)
+{
+	memcpy(data, m_Data + m_Offset, len);
+	m_Offset += len;
+	return len;
+}
+
+void* QtMappedFile::GetDataAtOffset(size_t offset)
+{
+	return m_Data + offset;
+}
+
+void QtMappedFile::SeekRelative(size_t bytesToSeek)
+{
+	m_Offset += bytesToSeek;
+}

@@ -1,0 +1,32 @@
+#ifndef	__QtMappedFile_h__
+#define	__QtMappedFile_h__
+
+#include <QFile>
+#include "common.h"
+
+class QtMappedFile : public QFile
+{
+	Q_OBJECT
+public:
+	explicit QtMappedFile(QObject *parent = 0);
+
+	QtMappedFile(const QString& fileName);
+	virtual ~QtMappedFile();
+
+	uint8	ReadUint8(void);
+	uint32	ReadUint32(void);
+	size_t	ReadData(void* data, size_t len);
+	void*	GetDataAtOffset(size_t offset);
+	void	SeekRelative(size_t bytesToSeek);
+
+signals:
+
+public slots:
+
+private:
+	uint8*		m_Data;
+	size_t		m_Offset;
+	size_t		m_Size;
+};
+
+#endif	// __QtMappedFile_h__

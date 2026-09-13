@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.37628.2 d17.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "NFSBundleExplorer", "NFSBundleExplorer.vcxproj", "{F14C4ACF-5613-3395-86B7-0C4742B8B90F}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x86 = Debug|x86
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{F14C4ACF-5613-3395-86B7-0C4742B8B90F}.Debug|x86.ActiveCfg = Debug|Win32
+		{F14C4ACF-5613-3395-86B7-0C4742B8B90F}.Debug|x86.Build.0 = Debug|Win32
+		{F14C4ACF-5613-3395-86B7-0C4742B8B90F}.Release|x86.ActiveCfg = Release|Win32
+		{F14C4ACF-5613-3395-86B7-0C4742B8B90F}.Release|x86.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {FF2E6B80-2F3F-4499-906C-112CE2F78ECD}
+	EndGlobalSection
+EndGlobal

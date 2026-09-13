@@ -1,0 +1,51 @@
+/*
+ * This code is written by iOrange, 2010
+ *  please, remember me if you use this code ;)
+ */
+
+
+#ifndef DLGBUNDLEASSEMBLER_H
+#define DLGBUNDLEASSEMBLER_H
+
+#include <QDialog>
+#include <QListWidgetItem>
+#include <QFile>
+
+#include "../NFSBundle.h"
+#include "../common.h"
+
+namespace Ui {
+	class DlgBundleAssembler;
+}
+
+class DlgBundleAssembler : public QDialog
+{
+	Q_OBJECT
+
+public:
+	explicit DlgBundleAssembler(QWidget *parent = 0);
+	~DlgBundleAssembler();
+
+private:
+	typedef QMap<QString, QString>	FilesMap;
+
+	Ui::DlgBundleAssembler *ui;
+	FilesMap				m_FilesMap;
+	FilesMap				m_BundlesMap;
+
+private:
+	bool	CheckForCorrectNFSFile(const QString& fileName);
+	int		AssembleBundle(const QString& bunlePath, const QList<QString>& filesList);
+	int		PrepareTextureFile(QFile& file, S_NFSFileInfo& info) const;
+
+private slots:
+	void on_btnAssemble_clicked();
+	void on_btnBundlesClear_2_clicked();
+	void on_btnBundlesClear_clicked();
+	void on_btnAddFilesDir_clicked();
+	void on_lstBundles_itemChanged(QListWidgetItem* item);
+	void on_btnAddBundlesDir_clicked();
+	void on_btnCancel_clicked();
+};
+
+#endif // DLGBUNDLEASSEMBLER_H

@@ -1,0 +1,18 @@
+<RCC>
+    <qresource prefix="/">
+        <file>resources/icons/Folder_24x24.png</file>
+        <file>resources/icons/Download_24x24.png</file>
+        <file>resources/icons/Open_24x24.png</file>
+        <file>resources/icons/Positive_256x256.png</file>
+        <file>resources/icons/Remove_24x24.png</file>
+        <file>resources/icons/Save_24x24.png</file>
+        <file>resources/icons/Stock Index Up_24x24.png</file>
+        <file>resources/icons/Picture_16x16.png</file>
+        <file>resources/icons/New_16x16.png</file>
+        <file>resources/icons/Text Document_24x24.png</file>
+        <file>resources/icons/Settings_16x16.png</file>
+        <file>resources/icons/Information_48x48.png</file>
+        <file>resources/icons/Help_24x24.png</file>
+        <file>resources/icons/Blue SRT-4.png</file>
+    </qresource>
+</RCC>

@@ -1,0 +1,348 @@
+#include <cstdio>
+#include <cassert>
+#include <memory.h>
+
+#include "zlib_adapter.h"
+
+
+inline int imin(int a, int b)
+{
+	return a < b ? a : b;
+}
+
+
+#include <zlib.h>
+
+
+namespace zlib_adapter
+{
+	const int	ZBUF_SIZE = 4096;
+
+	struct inflater_impl
+	{
+		FILE*	m_in;
+		z_stream	m_zstream;
+		int	m_initial_stream_pos;	// position of the input stream where we started inflating.
+		int	m_logical_stream_pos;	// current stream position of uncompressed data.
+		bool	m_at_eof;
+
+		unsigned char	m_rawdata[ZBUF_SIZE];
+
+		int	m_error;
+
+
+		inflater_impl(FILE* in)
+		// Constructor.
+			:
+			m_in(in),
+			m_initial_stream_pos(ftell(in)),
+			m_logical_stream_pos(0),
+			m_at_eof(false),
+			m_error(0)
+		{
+			assert(m_in);
+
+			m_zstream.zalloc = (alloc_func)0;
+			m_zstream.zfree = (free_func)0;
+			m_zstream.opaque = (voidpf)0;
+
+			m_zstream.next_in  = 0;
+			m_zstream.avail_in = 0;
+
+			m_zstream.next_out = 0;
+			m_zstream.avail_out = 0;
+
+			int	err = inflateInit(&m_zstream);
+			if (err != Z_OK) {
+				//log_error("error: inflater_impl::ctor() inflateInit() returned %d\n", err);
+				m_error = 1;
+				return;
+			}
+
+			// Ready to go!
+		}
+
+
+		void	reset()
+		// Discard current results and rewind to the beginning.
+		// Necessary in order to seek backwards.
+		{
+			m_error = 0;
+			m_at_eof = 0;
+			int	err = inflateReset(&m_zstream);
+			if (err != Z_OK) {
+				m_error = 1;
+				return;
+			}
+
+			m_zstream.next_in = 0;
+			m_zstream.avail_in = 0;
+
+			m_zstream.next_out = 0;
+			m_zstream.avail_out = 0;
+
+			// Rewind the underlying stream.
+			fseek(m_in, m_initial_stream_pos, SEEK_SET);
+			m_logical_stream_pos = 0;
+		}
+
+
+		int	inflate_from_stream(void* dst, int bytes)
+		{
+			if (m_error)
+			{
+				return 0;
+			}
+
+			m_zstream.next_out = (unsigned char*) dst;
+			m_zstream.avail_out = bytes;
+
+			for (;;)
+			{
+				if (m_zstream.avail_in == 0)
+				{
+					// Get more raw data.
+					int	new_bytes = fread(m_rawdata, 1, ZBUF_SIZE, m_in);
+					if (new_bytes == 0)
+					{
+						// The cupboard is bare!  We have nothing to feed to inflate().
+						break;
+					}
+					else
+					{
+						m_zstream.next_in = m_rawdata;
+						m_zstream.avail_in = new_bytes;
+					}
+				}
+
+				int	err = inflate(&m_zstream, Z_SYNC_FLUSH);
+				if (err == Z_STREAM_END)
+				{
+					m_at_eof = true;
+					break;
+				}
+				if (err != Z_OK)
+				{
+					// something's wrong.
+					m_error = 1;
+					break;
+				}
+
+				if (m_zstream.avail_out == 0)
+				{
+					break;
+				}
+			}
+
+			int	bytes_read = bytes - m_zstream.avail_out;
+			m_logical_stream_pos += bytes_read;
+
+			return bytes_read;
+		}
+
+		void	rewind_unused_bytes()
+		// If we have unused bytes in our input buffer, rewind
+		// to before they started.
+		{
+			if (m_zstream.avail_in > 0)
+			{
+				int	pos = ftell(m_in);
+				int	rewound_pos = pos - m_zstream.avail_in;
+				assert(pos >= 0);
+				assert(pos >= m_initial_stream_pos);
+				assert(rewound_pos >= 0);
+				assert(rewound_pos >= m_initial_stream_pos);
+
+				fseek(m_in, rewound_pos, SEEK_SET);
+			}
+		}
+	};
+
+
+
+ZLibFile::ZLibFile(FILE* in)
+	: m_impl(new inflater_impl(in))
+{
+}
+
+
+int ZLibFile::read(void* dst, int bytes)
+// Return number of bytes actually read.
+{
+	if (m_impl->m_error)
+	{
+		return 0;
+	}
+
+	return m_impl->inflate_from_stream(dst, bytes);
+}
+
+int ZLibFile::seek(int pos)
+// Try to go to pos.  Return actual pos.
+{
+	if (m_impl->m_error)
+	{
+		return m_impl->m_logical_stream_pos;
+	}
+
+	// If we're seeking backwards, then restart from the beginning.
+	if (pos < m_impl->m_logical_stream_pos)
+	{
+		m_impl->reset();
+	}
+
+	unsigned char	temp[ZBUF_SIZE];
+
+	// Now seek forwards, by just reading data in blocks.
+	while (m_impl->m_logical_stream_pos < pos)
+	{
+		int	to_read = pos - m_impl->m_logical_stream_pos;
+		int	to_read_this_time = imin(to_read, ZBUF_SIZE);
+		assert(to_read_this_time > 0);
+
+		int	bytes_read = m_impl->inflate_from_stream(temp, to_read_this_time);
+		assert(bytes_read <= to_read_this_time);
+		if (bytes_read == 0)
+		{
+			// Trouble; can't seek any further.
+			break;
+		}
+	}
+
+	assert(m_impl->m_logical_stream_pos <= pos);
+
+	return m_impl->m_logical_stream_pos;
+}
+
+
+int ZLibFile::seek_to_end(void)
+{
+	if (m_impl->m_error)
+	{
+		return m_impl->m_logical_stream_pos;
+	}
+
+	// Keep reading until we can't read any more.
+
+	unsigned char	temp[ZBUF_SIZE];
+
+	// Seek forwards.
+	for (;;)
+	{
+		int	bytes_read = m_impl->inflate_from_stream(temp, ZBUF_SIZE);
+		if (bytes_read == 0)
+		{
+			// We've seeked as far as we can.
+			break;
+		}
+	}
+
+	return m_impl->m_logical_stream_pos;
+}
+
+int ZLibFile::tell(void)
+{
+	return m_impl->m_logical_stream_pos;
+}
+
+bool ZLibFile::get_eof(void)
+{
+	return m_impl->m_at_eof;
+}
+
+int ZLibFile::close(void)
+{
+	m_impl->rewind_unused_bytes();
+	int	err = inflateEnd(&(m_impl->m_zstream));
+
+	if (err != Z_OK)
+	{
+		return -1;
+	}
+
+	return 0;
+}
+
+
+
+int DecompressMemory(void* data_in, int size_in, std::vector<unsigned char>& data_out)
+{
+	z_stream m_zstream;
+
+	m_zstream.zalloc = (alloc_func)0;
+	m_zstream.zfree = (free_func)0;
+	m_zstream.opaque = (voidpf)0;
+
+	m_zstream.next_in  = 0;
+	m_zstream.avail_in = 0;
+
+	m_zstream.next_out = 0;
+	m_zstream.avail_out = 0;
+
+	int	err = inflateInit(&m_zstream);
+	if (err != Z_OK)
+		return 0;
+
+	m_zstream.next_in = (unsigned char *)data_in;
+	m_zstream.avail_in = size_in;
+
+	m_zstream.next_out = &data_out[0];
+	m_zstream.avail_out = (int)data_out.size();
+	for (;;)
+	{
+		err = inflate(&m_zstream, Z_SYNC_FLUSH);
+		if (err == Z_STREAM_END)
+			break;
+
+		if (err != Z_OK)
+		{
+			inflateEnd(&m_zstream);
+			return 0;
+		}
+
+		if (m_zstream.avail_out == 0)
+		{
+			break;
+		}
+	}
+	inflateEnd(&m_zstream);
+
+	return (int)data_out.size();
+}
+
+int CompressMemory(void* data_in, int size_in, std::vector<unsigned char>& data_out)
+{
+	z_stream m_zstream;
+
+	m_zstream.zalloc = (alloc_func)0;
+	m_zstream.zfree = (free_func)0;
+	m_zstream.opaque = (voidpf)0;
+
+	m_zstream.next_in  = 0;
+	m_zstream.avail_in = 0;
+
+	m_zstream.next_out = 0;
+	m_zstream.avail_out = 0;
+
+	int err = deflateInit(&m_zstream, Z_DEFAULT_COMPRESSION);
+	if (err != Z_OK)
+		return 0;
+
+	m_zstream.next_in = (unsigned char *)data_in;
+	m_zstream.avail_in = size_in;
+
+	std::vector<unsigned char> tempBuffer(size_in + size_in/100 + 12);
+	m_zstream.next_out = &tempBuffer[0];
+	m_zstream.avail_out = (int)tempBuffer.size();
+
+	err = deflate(&m_zstream, Z_FINISH);
+	deflateEnd(&m_zstream);
+	if (err < 0)
+		return 0;
+
+	data_out.resize(m_zstream.total_out);
+	memcpy(&data_out[0], &tempBuffer[0], m_zstream.total_out);
+	return (int)data_out.size();
+}
+
+}

@@ -1,0 +1,59 @@
+K 25
+svn:wc:ra_dav:version-url
+V 29
+/svn/!svn/ver/4/trunk/dialogs
+END
+dlgdefstableview.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/svn/!svn/ver/4/trunk/dialogs/dlgdefstableview.cpp
+END
+dlgfileinfo.ui
+K 25
+svn:wc:ra_dav:version-url
+V 44
+/svn/!svn/ver/2/trunk/dialogs/dlgfileinfo.ui
+END
+DlgBundleAssembler.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/svn/!svn/ver/2/trunk/dialogs/DlgBundleAssembler.cpp
+END
+dlgdefstableview.h
+K 25
+svn:wc:ra_dav:version-url
+V 48
+/svn/!svn/ver/4/trunk/dialogs/dlgdefstableview.h
+END
+dlgfileinfo.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 45
+/svn/!svn/ver/2/trunk/dialogs/dlgfileinfo.cpp
+END
+DlgBundleAssembler.h
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/svn/!svn/ver/2/trunk/dialogs/DlgBundleAssembler.h
+END
+dlgdefstableview.ui
+K 25
+svn:wc:ra_dav:version-url
+V 49
+/svn/!svn/ver/4/trunk/dialogs/dlgdefstableview.ui
+END
+dlgfileinfo.h
+K 25
+svn:wc:ra_dav:version-url
+V 43
+/svn/!svn/ver/2/trunk/dialogs/dlgfileinfo.h
+END
+DlgBundleAssembler.ui
+K 25
+svn:wc:ra_dav:version-url
+V 51
+/svn/!svn/ver/2/trunk/dialogs/DlgBundleAssembler.ui
+END
